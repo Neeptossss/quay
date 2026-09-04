@@ -45,9 +45,36 @@ pub fn stored_login(store: &Store) -> Result<Option<String>, Box<dyn Error>> {
     }
 }
 
+pub const KEYCHAIN_OPT_OUT: &str = "QUAY_NO_KEYCHAIN";
+
+fn keychain_is_allowed() -> bool {
+    std::env::var(KEYCHAIN_OPT_OUT).is_err()
+}
+
+pub fn logout() -> Outcome {
+    let store = open_store()?;
+    match stored_login(&store)? {
+        Some(login) => {
+            keychain().delete(&login)?;
+            println!("jeton de {login} retiré du trousseau");
+            println!(
+                "le système ne redemandera plus d'autorisation ; définir ${TOKEN_VARIABLE} pour continuer sans trousseau"
+            );
+        }
+        None => println!("aucun compte connu, rien à retirer"),
+    }
+    Ok(())
+}
+
 pub fn token_for_login(login: Option<&str>) -> Result<Token, Box<dyn Error>> {
     if let Some(token) = Token::from_env(TOKEN_VARIABLE) {
         return Ok(token);
+    }
+    if !keychain_is_allowed() {
+        return Err(format!(
+            "le trousseau est écarté par ${KEYCHAIN_OPT_OUT}, et ${TOKEN_VARIABLE} n'est pas défini"
+        )
+        .into());
     }
     match login {
         Some(login) => keychain()
@@ -246,7 +273,7 @@ pub async fn watch(cycles: Option<usize>) -> Outcome {
     }
 }
 
-const DEFAULT_VIEW: &str = "À relire";
+const DEFAULT_VIEW: &str = "view.to_review";
 const RESULT_LIMIT: i64 = 200;
 
 fn render_rows(rows: &[quay_store::inbox::InboxRow], elapsed: std::time::Duration, source: &str) {
@@ -374,6 +401,7 @@ pub async fn keys(scope: Option<&str>) -> Outcome {
         None => crate::commands::Scope::ALL.to_vec(),
     };
 
+    let catalogue = crate::i18n::Catalogue::for_locale(&crate::i18n::preferred_locale());
     for scope in scopes {
         println!("— {} —", scope.id());
         for command in crate::commands::available_in(scope, &capabilities) {
@@ -391,7 +419,10 @@ pub async fn keys(scope: Option<&str>) -> Outcome {
                     None => String::new(),
                 }
             };
-            println!("  {bindings:<12} {}{state}", command.title);
+            println!(
+                "  {bindings:<12} {}{state}",
+                catalogue.get(&command.title_key())
+            );
         }
         println!();
     }

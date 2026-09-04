@@ -3416,6 +3416,7 @@ dependencies = [
  "quay-store",
  "quay-sync",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tempfile",

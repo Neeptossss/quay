@@ -1,40 +1,77 @@
 [
   {
-    "name": "À relire",
+    "name": "view.to_review",
     "query": "is:pr is:open review-requested:@me -author:@me sort:updated-desc",
-    "columns": ["repo", "number", "checks", "review", "threads", "title", "author", "updated"],
+    "columns": [
+      "repo",
+      "number",
+      "checks",
+      "review",
+      "threads",
+      "title",
+      "author",
+      "updated"
+    ],
     "sort": "updated-desc",
     "position": 0,
     "shortcut": "g r"
   },
   {
-    "name": "Mes pull requests",
+    "name": "view.mine",
     "query": "is:pr is:open author:@me sort:updated-desc",
-    "columns": ["repo", "number", "checks", "review", "threads", "title", "updated"],
+    "columns": [
+      "repo",
+      "number",
+      "checks",
+      "review",
+      "threads",
+      "title",
+      "updated"
+    ],
     "sort": "updated-desc",
     "position": 1,
     "shortcut": "g p"
   },
   {
-    "name": "CI en échec",
+    "name": "view.failing",
     "query": "is:pr is:open author:@me checks:failing sort:updated-desc",
-    "columns": ["repo", "number", "checks", "title", "updated"],
+    "columns": [
+      "repo",
+      "number",
+      "checks",
+      "title",
+      "updated"
+    ],
     "sort": "updated-desc",
     "position": 2,
     "shortcut": "g c"
   },
   {
-    "name": "Brouillons",
+    "name": "view.drafts",
     "query": "is:pr is:open is:draft author:@me sort:updated-desc",
-    "columns": ["repo", "number", "title", "updated"],
+    "columns": [
+      "repo",
+      "number",
+      "title",
+      "updated"
+    ],
     "sort": "updated-desc",
     "position": 3,
     "shortcut": "g b"
   },
   {
-    "name": "Tout ce qui est ouvert",
+    "name": "view.all_open",
     "query": "is:pr is:open sort:updated-desc",
-    "columns": ["repo", "number", "checks", "review", "threads", "title", "author", "updated"],
+    "columns": [
+      "repo",
+      "number",
+      "checks",
+      "review",
+      "threads",
+      "title",
+      "author",
+      "updated"
+    ],
     "sort": "updated-desc",
     "position": 4,
     "shortcut": null

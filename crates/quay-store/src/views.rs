@@ -188,7 +188,9 @@ mod tests {
     fn saving_two_views_under_the_same_name_is_refused_rather_than_shadowing_one() {
         let (_directory, store) = store();
         install_shipped_if_empty(store.connection()).unwrap();
-        let existing = by_name(store.connection(), "À relire").unwrap().unwrap();
+        let existing = by_name(store.connection(), "view.to_review")
+            .unwrap()
+            .unwrap();
         assert!(matches!(
             save(store.connection(), &existing),
             Err(StoreError::Sqlite(_))
@@ -206,12 +208,12 @@ mod tests {
     fn removing_a_view_takes_it_out_of_the_listing() {
         let (_directory, store) = store();
         install_shipped_if_empty(store.connection()).unwrap();
-        assert!(remove(store.connection(), "Brouillons").unwrap());
+        assert!(remove(store.connection(), "view.drafts").unwrap());
         assert!(
             !all(store.connection())
                 .unwrap()
                 .iter()
-                .any(|view| view.name == "Brouillons")
+                .any(|view| view.name == "view.drafts")
         );
     }
 }

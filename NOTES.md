@@ -1349,3 +1349,79 @@ le §4 veut dire et cela doit être décidé, pas glissé.
 - Les sourcemaps ne sont plus embarquées en production : le bundle passe de 550 Ko à 64 Ko. Sans
   effet mesurable sur le démarrage, mais 550 Ko de carte de sources dans un binaire livré n'a pas de
   raison d'être.
+
+---
+
+## Session 2026-09-04 (suite) — refonte de l'interface, i18n et icônes
+
+### Le trousseau qui redemandait le mot de passe
+
+Signalé pendant la session, et c'était moi. **Chaque `cargo build` produit un binaire différent, donc
+une signature différente**, et macOS lie l'autorisation d'accès à un secret du trousseau à l'identité
+du binaire qui l'a créé. Un binaire recompilé est une autre application aux yeux du système, donc il
+redemande. À raison d'une compilation par itération, c'est intenable.
+
+Trois sorties, toutes en place : `quay logout` retire le secret, `QUAY_NO_KEYCHAIN=1` écarte le
+trousseau, et un jeton donné par l'environnement prime toujours sur lui. Le jeton a été retiré du
+trousseau de la machine.
+
+La vraie correction pour un produit livré est une signature stable, c'est-à-dire un certificat de
+signature de code réutilisé d'une compilation à l'autre. Cela crée un certificat sur la machine, donc
+je ne l'ai pas fait sans demander.
+
+### Trois décisions de conception, assumées
+
+**Le système de design est le nôtre, pas une bibliothèque de composants.** Le §8.5 interdit
+explicitement « un énième thème sombre générique » ; nos lignes de 28 px sont hors des défauts de
+toute librairie ; le comportement clavier vit déjà en Rust. Une bibliothèque nous ferait ressembler à
+tout le monde alors que le §1 pose l'interface comme la valeur ajoutée. Ce qui est écrit est une
+couche de jetons et un jeu de règles, pas un cadriciel.
+
+**Les icônes viennent de Lucide**, sous licence MIT, en trait fin et sur grille cohérente. Les
+dessiner nous-mêmes serait du travail sans différenciation. Elles sont importées **une par une**,
+donc l'arbre est secoué : 44 icônes nommées, pas le jeu entier.
+
+**Le catalogue de traductions vit en Rust, pas dans le frontend.** C'est contre-intuitif et c'est la
+conséquence d'une contrainte réelle : le classement flou de la palette (§8.3) score les **titres**
+des commandes. Si les titres étaient côté frontend, il faudrait soit y dupliquer le scoring, ce qui
+est exactement ce qu'on veut éviter, soit renvoyer les libellés à Rust à chaque frappe. Le catalogue
+est donc embarqué dans le binaire, exposé par une commande IPC, et le frontend le consomme comme une
+donnée. Une seule source, aucune duplication.
+
+Conséquence heureuse : **il ne reste plus une seule chaîne française dans le code Rust**. Les
+commandes portent une clé dérivée de leur identifiant, les vues livrées portent une clé, et le
+`CLAUDE.md` voulait précisément que le français ne vive pas dans le code.
+
+Une clé inconnue **se rend elle-même** plutôt que de disparaître. C'est ce qui permet à une vue
+renommée par l'utilisateur de s'afficher telle qu'il l'a écrite, sans traitement particulier.
+
+### Ce que l'interface est devenue
+
+Barre latérale pleine hauteur — nom du produit, groupe de vues avec leurs raccourcis en pastilles,
+et un pied de diagnostic — puis une barre haute dans la vue portant le titre, le compte d'entrées et
+**la requête DSL de la vue affichée en clair**, ce qui rend le langage du §8.4 visible plutôt que
+caché.
+
+Les jetons suivent le §8.5 : un seul accent, réservé au focus et à l'état actionnable ; la couleur
+ailleurs n'encode que l'état de CI et de revue ; pas d'ombre portée ; les filets portent de
+l'information ; deux familles typographiques, une à chasse variable et une à chasse fixe pour tout ce
+qui est identifiant ; le mouvement passe par une variable que `prefers-reduced-motion` met à zéro.
+
+### Sept tests qui gardent les clés honnêtes
+
+Le risque d'un système à clés est la clé manquante, qui s'affiche crûment en production. Sont
+vérifiés, côté Rust et côté frontend : chaque locale porte exactement les mêmes clés, aucune
+traduction n'est vide, chaque commande du registre a un titre **et** des mots-clés dans chaque
+langue, chaque vue livrée a un nom dans chaque langue, chaque commande nomme une icône dont
+l'identifiant est valide, une clé inconnue se rend elle-même, et un paramètre non fourni reste
+visible plutôt que d'être remplacé par du vide.
+
+### Réserves
+
+- La palette ne se navigue pas encore aux flèches ; elle s'ouvre, filtre et exécute la première
+  entrée.
+- Le sélecteur de langue n'existe pas : la langue vient de `QUAY_LOCALE` ou de `LANG`.
+- La barre de titre reste celle du système. Une barre personnalisée façon Linear demande de gérer
+  soi-même le déplacement de la fenêtre et l'encart des feux tricolores.
+- `keystroke_to_pixel` reste `MISSING` : l'instrument est branché et affiché dans le pied de la barre
+  latérale, mais personne n'a encore tapé dans la fenêtre.

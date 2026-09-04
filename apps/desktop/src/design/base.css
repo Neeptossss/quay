@@ -1,0 +1,86 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  line-height: 1.4;
+  font-feature-settings: "cv05" 1, "ss03" 1, "tnum" 1;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: var(--text-caps);
+  color: var(--ink-faint);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sharp);
+  padding: 0 4px;
+  line-height: 15px;
+  display: inline-block;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex: none;
+  color: currentColor;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--ink-muted);
+}
+
+.faint {
+  color: var(--ink-faint);
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tone-good {
+  color: var(--good);
+}
+.tone-bad {
+  color: var(--bad);
+}
+.tone-waiting {
+  color: var(--waiting);
+}
+.tone-absent {
+  color: var(--ink-faint);
+}

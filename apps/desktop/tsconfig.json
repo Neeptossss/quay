@@ -9,7 +9,14 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "skipLibCheck": true,
-    "types": ["svelte"]
+    "types": [
+      "svelte"
+    ],
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.svelte"
+  ]
 }

@@ -1,5 +1,7 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   import type { CommandEntry } from "./ipc";
+  import { t } from "./i18n";
 
   let {
     entries,
@@ -20,26 +22,26 @@
 </script>
 
 <div class="overlay">
-  <div class="panel">
-    <input
-      bind:this={field}
-      value={needle}
-      placeholder="Commande…"
-      oninput={(event) => onNeedle((event.currentTarget as HTMLInputElement).value)}
-    />
+  <div class="palette">
+    <div class="field">
+      <Icon name="command" size={14} />
+      <input
+        bind:this={field}
+        value={needle}
+        placeholder={t("palette.placeholder")}
+        oninput={(event) => onNeedle((event.currentTarget as HTMLInputElement).value)}
+      />
+    </div>
     <ul role="listbox">
       {#each entries as entry, index (entry.id)}
-        <li
-          role="option"
-          aria-selected={index === selected}
-          class={entry.enabled ? "" : "disabled"}
-        >
-          <span>{entry.title}</span>
-          <kbd>{entry.bindings.join(" / ")}</kbd>
+        <li role="option" aria-selected={index === selected} class={entry.enabled ? "" : "disabled"}>
+          <Icon name={entry.icon} size={13} />
+          <span class="truncate">{t(entry.titleKey)}</span>
+          <kbd>{entry.bindings[0] ?? ""}</kbd>
         </li>
       {/each}
       {#if entries.length === 0}
-        <li><span>Aucune commande ici.</span></li>
+        <li><Icon name="search" size={13} /><span>{t("palette.empty")}</span><span></span></li>
       {/if}
     </ul>
   </div>

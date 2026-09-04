@@ -15,11 +15,11 @@ export function checksTone(state: string | null): string {
   return "absent";
 }
 
-export function checksLabel(state: string | null): string {
-  if (state === "success") return "ok";
-  if (state === "failure" || state === "error") return "ko";
-  if (state === "pending" || state === "expected") return "…";
-  return "—";
+export function checksIcon(state: string | null): string {
+  if (state === "success") return "circle-check";
+  if (state === "failure" || state === "error") return "circle-alert";
+  if (state === "pending" || state === "expected") return "loader";
+  return "dot";
 }
 
 export function reviewTone(state: string | null): string {
@@ -29,9 +29,15 @@ export function reviewTone(state: string | null): string {
   return "absent";
 }
 
-export function reviewLabel(state: string | null): string {
-  if (state === "approved") return "appr";
-  if (state === "changes_requested") return "chng";
-  if (state === "review_required") return "attn";
-  return "—";
+export function reviewIcon(state: string | null): string {
+  if (state === "approved") return "check";
+  if (state === "changes_requested") return "pencil-line";
+  if (state === "review_required") return "circle-dot";
+  return "dot";
+}
+
+export function syncIcon(phase: string): string {
+  if (phase === "offline") return "circle-alert";
+  if (phase === "idle") return "circle-check";
+  return "loader";
 }

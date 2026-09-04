@@ -12,7 +12,8 @@ pub const RESULT_LIMIT: i64 = 200;
 pub struct KeyBinding {
     pub chord: String,
     pub command: String,
-    pub title: String,
+    pub title_key: String,
+    pub icon: String,
     pub enabled: bool,
 }
 
@@ -20,7 +21,8 @@ pub struct KeyBinding {
 #[serde(rename_all = "camelCase")]
 pub struct CommandEntry {
     pub id: String,
-    pub title: String,
+    pub title_key: String,
+    pub icon: String,
     pub scope: String,
     pub bindings: Vec<String>,
     pub enabled: bool,
@@ -175,7 +177,8 @@ pub fn key_map(scope: Scope, capabilities: &Capabilities) -> Vec<KeyBinding> {
             bindings.push(KeyBinding {
                 chord: rendered,
                 command: command.id.to_owned(),
-                title: command.title.to_owned(),
+                title_key: command.title_key(),
+                icon: command.icon.to_owned(),
                 enabled: command.is_enabled(capabilities),
             });
         }
@@ -183,8 +186,13 @@ pub fn key_map(scope: Scope, capabilities: &Capabilities) -> Vec<KeyBinding> {
     bindings
 }
 
-pub fn palette(needle: &str, scope: Scope, capabilities: &Capabilities) -> Vec<CommandEntry> {
-    commands::rank(needle, scope, capabilities)
+pub fn palette(
+    needle: &str,
+    scope: Scope,
+    capabilities: &Capabilities,
+    catalogue: &crate::i18n::Catalogue,
+) -> Vec<CommandEntry> {
+    commands::rank(needle, scope, capabilities, catalogue)
         .into_iter()
         .filter_map(|found| {
             commands::registry()
@@ -192,7 +200,8 @@ pub fn palette(needle: &str, scope: Scope, capabilities: &Capabilities) -> Vec<C
                 .find(|command| command.id == found.id)
                 .map(|command| CommandEntry {
                     id: command.id.to_owned(),
-                    title: command.title.to_owned(),
+                    title_key: command.title_key(),
+                    icon: command.icon.to_owned(),
                     scope: command.scope.id().to_owned(),
                     bindings: command
                         .chords()
@@ -245,6 +254,7 @@ mod tests {
 
     use super::{key_map, palette, run_query, run_view, saved_views};
     use crate::commands::Scope;
+    use crate::i18n::Catalogue;
 
     fn capabilities(scopes: &str) -> Capabilities {
         Capabilities::from_scopes(TokenKind::PatClassic, &GrantedScopes::parse(scopes))
@@ -300,18 +310,28 @@ mod tests {
         let map = key_map(Scope::PullRequest, &capabilities);
         assert!(!map.iter().any(|binding| binding.command == "pr.merge"));
         assert!(
-            !palette("", Scope::PullRequest, &capabilities)
-                .iter()
-                .any(|entry| entry.id == "pr.merge")
+            !palette(
+                "",
+                Scope::PullRequest,
+                &capabilities,
+                &Catalogue::for_locale("fr")
+            )
+            .iter()
+            .any(|entry| entry.id == "pr.merge")
         );
     }
 
     #[test]
     fn a_command_the_user_can_recover_reaches_the_frontend_marked_disabled() {
         let capabilities = capabilities("repo, notifications, read:org");
-        let entry = palette("", Scope::PullRequest, &capabilities)
-            .into_iter()
-            .find(|entry| entry.id == "pr.merge");
+        let entry = palette(
+            "",
+            Scope::PullRequest,
+            &capabilities,
+            &Catalogue::for_locale("fr"),
+        )
+        .into_iter()
+        .find(|entry| entry.id == "pr.merge");
         match entry {
             Some(entry) => assert!(entry.enabled),
             None => panic!("merge stays discoverable with the repo scope granted"),
@@ -320,7 +340,12 @@ mod tests {
 
     #[test]
     fn the_palette_carries_the_shortcut_of_each_command_so_it_can_teach_it() {
-        let entries = palette("merg", Scope::PullRequest, &capabilities("repo"));
+        let entries = palette(
+            "merg",
+            Scope::PullRequest,
+            &capabilities("repo"),
+            &Catalogue::for_locale("fr"),
+        );
         match entries.first() {
             Some(entry) => {
                 assert_eq!(entry.id, "pr.merge");
@@ -350,7 +375,7 @@ mod tests {
         if let Err(error) = saved_views(&store) {
             panic!("the views must install: {error}");
         }
-        match run_view(&store, "À relire", "octocat") {
+        match run_view(&store, "view.to_review", "octocat") {
             Ok(entries) => assert!(entries.is_empty()),
             Err(error) => panic!("an empty view is not an error: {error}"),
         }

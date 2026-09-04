@@ -24,6 +24,7 @@ tauri-build = "2.6.3"
 tauri = "2.11.5"
 quay-core.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 quay-forge.workspace = true
 quay-store.workspace = true
 quay-sync.workspace = true

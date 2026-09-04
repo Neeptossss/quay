@@ -1,11 +1,15 @@
 <script lang="ts">
   import Detail from "./Detail.svelte";
+  import Icon from "./Icon.svelte";
   import Palette from "./Palette.svelte";
   import Row from "./Row.svelte";
+  import Sidebar from "./Sidebar.svelte";
+  import TopBar from "./TopBar.svelte";
   import { ChordReader, tokenOf } from "./keys";
   import { measurePaint, observed, percentile } from "./latency";
-  import { ROW_HEIGHT, scrollToKeep, windowOf } from "./virtual";
   import { observePaint } from "./paint";
+  import { scrollToKeep, windowOf } from "./virtual";
+  import { t } from "./i18n";
   import * as ipc from "./ipc";
   import type {
     CommandEntry,
@@ -31,11 +35,15 @@
   let pending = $state("");
   let sync: SyncState | null = $state(null);
   let coldStart: number | null = $state(null);
+  let keystroke: number | null = $state(null);
   let list: HTMLDivElement | undefined = $state();
   let scrollTop = $state(0);
   let viewport = $state(800);
-  let rendered = $derived(windowOf(entries.length, scrollTop, viewport));
+
   let scope: Scope = $derived(paletteOpen ? "global" : opened ? "pull_request" : "list");
+  let rendered = $derived(windowOf(entries.length, scrollTop, viewport));
+  let heading = $derived(t(currentView));
+  let currentQuery = $derived(views.find((view) => view.name === currentView)?.query ?? "");
   let reader = new ChordReader([]);
   let bindings: ipc.KeyBinding[] = $state([]);
 
@@ -68,7 +76,7 @@
     ];
     for (const attachment of attaching) {
       attachment.catch((error) => {
-        failure = `la fenêtre ne peut pas écouter le cœur : ${error}`;
+        failure = t("error.listen", { reason: String(error) });
       });
     }
     return () => {
@@ -79,13 +87,10 @@
   });
 
   async function boot() {
-    void ipc.mark("boot started");
     try {
       views = await ipc.savedViews();
-      void ipc.mark("views loaded");
       const first = views[0];
       if (first) await openView(first.name);
-      void ipc.mark("view loaded");
     } catch (error) {
       failure = String(error);
     }
@@ -94,9 +99,7 @@
     } catch (error) {
       failure = failure ?? String(error);
     }
-    void ipc.mark("boot finished");
-    observePaint((name, startTime) => {
-      void ipc.mark(`${name} at ${startTime.toFixed(0)} ms into the page`);
+    observePaint((name) => {
       if (name !== "first-contentful-paint") return;
       ipc
         .firstPaint()
@@ -143,16 +146,16 @@
     paletteCursor = 0;
   }
 
-  function move(delta: number) {
-    if (entries.length === 0) return;
-    cursor = Math.min(entries.length - 1, Math.max(0, cursor + delta));
-    keepCursorVisible();
-  }
-
   function keepCursorVisible() {
     if (!list) return;
     const wanted = scrollToKeep(cursor, list.scrollTop, list.clientHeight);
     if (wanted !== list.scrollTop) list.scrollTop = wanted;
+  }
+
+  function move(delta: number) {
+    if (entries.length === 0) return;
+    cursor = Math.min(entries.length - 1, Math.max(0, cursor + delta));
+    keepCursorVisible();
   }
 
   async function dispatch(command: string) {
@@ -207,26 +210,21 @@
     if (token === null) return;
 
     if (paletteOpen) {
-      if (token === "Esc") {
+      if (token === "Esc" || token === "⌘k") {
         event.preventDefault();
         paletteOpen = false;
-        measurePaint("palette.close", started);
-        return;
-      }
-      if (token === "Enter") {
+      } else if (token === "Enter") {
         event.preventDefault();
         const chosen = paletteEntries[paletteCursor];
         paletteOpen = false;
         if (chosen && chosen.enabled) await dispatch(chosen.id);
-        measurePaint("palette.run", started);
+      } else if (token === "ArrowDown" || token === "ArrowUp") {
+        return;
+      } else {
         return;
       }
-      if (token === "⌘k") {
-        event.preventDefault();
-        paletteOpen = false;
-        measurePaint("palette.close", started);
-        return;
-      }
+      measurePaint("palette", started);
+      keystroke = percentile(0.99);
       return;
     }
 
@@ -235,17 +233,19 @@
       event.preventDefault();
       pending = reader.buffer;
       measurePaint("chord.pending", started);
+      keystroke = percentile(0.99);
       return;
     }
     pending = "";
     if (outcome === null) return;
     event.preventDefault();
     if (!outcome.enabled) {
-      failure = `${outcome.title} — indisponible avec ce jeton.`;
+      failure = t(outcome.titleKey);
       return;
     }
     await dispatch(outcome.command);
     measurePaint(outcome.command, started);
+    if (observed() > 0) keystroke = percentile(0.99);
   }
 
   $effect(() => {
@@ -258,64 +258,49 @@
 <svelte:window on:keydown={onKey} />
 
 <div class="shell">
-  <div class="bar">
-    <strong>Quay</strong>
-    <div class="views">
-      {#each views as view (view.name)}
-        <button aria-current={view.name === currentView} onclick={() => openView(view.name)}>
-          {view.name}
-          {#if view.shortcut}<kbd>{view.shortcut}</kbd>{/if}
-        </button>
-      {/each}
-    </div>
-  </div>
+  <Sidebar
+    {views}
+    current={currentView}
+    {sync}
+    shortcuts={bindings.length}
+    {coldStart}
+    {keystroke}
+    onOpen={(name) => openView(name)}
+  />
 
-  {#if failure}
-    <div class="error">{failure}</div>
-  {/if}
+  <section class="view">
+    <TopBar {heading} query={currentQuery} count={entries.length} {pending} />
 
-  {#if opened}
-    <Detail entry={opened} />
-  {:else if entries.length === 0}
-    <div class="empty">
-      Rien à relire ici. <kbd>⌘K</kbd> ouvre la palette, <kbd>g i</kbd> revient à l'inbox.
-    </div>
-  {:else}
-    <div
-      class="list"
-      role="listbox"
-      tabindex="-1"
-      bind:this={list}
-      bind:clientHeight={viewport}
-      onscroll={(event) => {
-        scrollTop = (event.currentTarget as HTMLDivElement).scrollTop;
-      }}
-    >
-      <div class="spacer" style="height: {rendered.above}px"></div>
-      {#each entries.slice(rendered.first, rendered.first + rendered.count) as entry, offset (entry.key)}
-        <Row {entry} selected={rendered.first + offset === cursor} />
-      {/each}
-      <div class="spacer" style="height: {rendered.below}px"></div>
-    </div>
-  {/if}
-
-  <div class="status">
-    <span>{entries.length} entrée(s)</span>
-    <span>{currentView}</span>
-    {#if pending}<span class="pending">{pending}…</span>{/if}
-    <span>
-      frappe→pixel p99
-      {#if observed() > 0}{percentile(0.99)?.toFixed(1)} ms sur {observed()}{:else}non mesuré{/if}
-    </span>
-    <span>{bindings.length} raccourci(s) ici</span>
-    {#if sync}
-      <span class={sync.healthy ? "" : "pending"}>{sync.phase} · {sync.detail}</span>
+    {#if failure}
+      <div class="banner"><Icon name="circle-alert" size={13} />{failure}</div>
     {/if}
-    <span>{ROW_HEIGHT * entries.length}px virtualisés</span>
-    <span>
-      démarrage {#if coldStart === null}non mesuré{:else}{coldStart.toFixed(0)} ms{/if}
-    </span>
-  </div>
+
+    {#if opened}
+      <Detail entry={opened} />
+    {:else if entries.length === 0}
+      <div class="empty">
+        <h2>{t("empty.title")}</h2>
+        <p>{@html t("empty.hint", { palette: "<kbd>⌘K</kbd>", inbox: "<kbd>g i</kbd>" })}</p>
+      </div>
+    {:else}
+      <div
+        class="list"
+        role="listbox"
+        tabindex="-1"
+        bind:this={list}
+        bind:clientHeight={viewport}
+        onscroll={(event) => {
+          scrollTop = (event.currentTarget as HTMLDivElement).scrollTop;
+        }}
+      >
+        <div class="spacer" style="height: {rendered.above}px"></div>
+        {#each entries.slice(rendered.first, rendered.first + rendered.count) as entry, offset (entry.key)}
+          <Row {entry} selected={rendered.first + offset === cursor} />
+        {/each}
+        <div class="spacer" style="height: {rendered.below}px"></div>
+      </div>
+    {/if}
+  </section>
 </div>
 
 {#if paletteOpen}

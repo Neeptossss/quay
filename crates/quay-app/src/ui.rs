@@ -18,6 +18,7 @@ pub struct SyncState {
 }
 
 pub struct Desktop {
+    catalogue: crate::i18n::Catalogue,
     started: Instant,
     first_paint: Mutex<Option<f64>>,
     store: Mutex<Store>,
@@ -95,8 +96,23 @@ fn key_map(scope: String, desktop: State<'_, Desktop>) -> Vec<KeyBinding> {
 #[tauri::command]
 fn palette(needle: String, scope: String, desktop: State<'_, Desktop>) -> Vec<CommandEntry> {
     desktop.with_capabilities(|capabilities| {
-        ipc::palette(&needle, ipc::scope_of(&scope), capabilities)
+        ipc::palette(
+            &needle,
+            ipc::scope_of(&scope),
+            capabilities,
+            &desktop.catalogue,
+        )
     })
+}
+
+#[tauri::command]
+fn catalogue(desktop: State<'_, Desktop>) -> std::collections::BTreeMap<String, String> {
+    desktop.catalogue.entries().clone()
+}
+
+#[tauri::command]
+fn locale(desktop: State<'_, Desktop>) -> String {
+    desktop.catalogue.locale().to_owned()
 }
 
 #[tauri::command]
@@ -319,6 +335,7 @@ pub fn run(started: Instant) -> Result<(), Box<dyn std::error::Error>> {
                 capabilities: Mutex::new(capabilities),
                 viewer: Mutex::new(viewer),
                 sync: Mutex::new(SyncState::starting()),
+                catalogue: crate::i18n::Catalogue::for_locale(&crate::i18n::preferred_locale()),
                 started,
                 first_paint: Mutex::new(None),
             });
@@ -361,6 +378,8 @@ pub fn run(started: Instant) -> Result<(), Box<dyn std::error::Error>> {
             mark,
             key_map,
             palette,
+            catalogue,
+            locale,
             saved_views,
             run_view,
             run_query,

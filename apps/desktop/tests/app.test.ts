@@ -6,7 +6,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
 }));
 
-const view = { name: "À relire", query: "is:pr is:open", shortcut: "g r", position: 0 };
+const view = { name: "view.to_review", query: "is:pr is:open", shortcut: "g r", position: 0 };
 const entry = {
   key: "acme/api#1",
   owner: "acme",
@@ -26,7 +26,17 @@ function answer(overrides: Record<string, unknown> = {}) {
     const table: Record<string, unknown> = {
       saved_views: [view],
       run_view: [entry],
-      key_map: [{ chord: "j", command: "list.next", title: "Suivante", enabled: true }],
+      key_map: [
+        {
+          chord: "j",
+          command: "list.next",
+          titleKey: "command.list.next",
+          icon: "arrow-down",
+          enabled: true,
+        },
+      ],
+      catalogue: { "app.name": "Quay", "view.to_review": "À relire" },
+      locale: "fr",
       palette: [],
       pull_request: null,
       sync_state: { phase: "idle", detail: "au repos", healthy: true },
@@ -39,6 +49,8 @@ function answer(overrides: Record<string, unknown> = {}) {
 }
 
 async function render() {
+  const { adopt } = await import("../src/i18n");
+  adopt({ "app.name": "Quay", "view.to_review": "À relire", "status.entries": "{count} entrée(s)" }, "fr");
   const { mount, flushSync } = await import("svelte");
   const App = (await import("../src/App.svelte")).default;
   document.body.innerHTML = '<div id="app"></div>';

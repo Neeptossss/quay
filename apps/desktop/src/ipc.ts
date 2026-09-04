@@ -6,13 +6,15 @@ export type Scope = "global" | "list" | "pull_request" | "review_panel" | "diff"
 export interface KeyBinding {
   chord: string;
   command: string;
-  title: string;
+  titleKey: string;
+  icon: string;
   enabled: boolean;
 }
 
 export interface CommandEntry {
   id: string;
-  title: string;
+  titleKey: string;
+  icon: string;
   scope: string;
   bindings: string[];
   enabled: boolean;

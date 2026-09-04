@@ -43,8 +43,7 @@ impl Scope {
 
 pub struct Command {
     pub id: &'static str,
-    pub title: &'static str,
-    pub keywords: &'static [&'static str],
+    pub icon: &'static str,
     pub bindings: &'static [&'static str],
     pub scope: Scope,
     pub requires: Option<Capability>,
@@ -53,24 +52,21 @@ pub struct Command {
 pub const REGISTRY: [Command; 32] = [
     Command {
         id: "goto.inbox",
-        title: "Aller à l'inbox",
-        keywords: &["inbox", "revue", "file"],
+        icon: "inbox",
         bindings: &["g i"],
         scope: Scope::Global,
         requires: None,
     },
     Command {
         id: "goto.my_pull_requests",
-        title: "Aller à mes pull requests",
-        keywords: &["mine", "auteur"],
+        icon: "git-pull-request",
         bindings: &["g p"],
         scope: Scope::Global,
         requires: None,
     },
     Command {
         id: "view.open_nth",
-        title: "Aller à une vue sauvegardée",
-        keywords: &["vue", "saved"],
+        icon: "layout-list",
         bindings: &[
             "g 1", "g 2", "g 3", "g 4", "g 5", "g 6", "g 7", "g 8", "g 9",
         ],
@@ -79,232 +75,203 @@ pub const REGISTRY: [Command; 32] = [
     },
     Command {
         id: "palette.open",
-        title: "Ouvrir la palette de commandes",
-        keywords: &["palette", "commande"],
+        icon: "command",
         bindings: &["⌘k"],
         scope: Scope::Global,
         requires: None,
     },
     Command {
         id: "search.open",
-        title: "Recherche rapide",
-        keywords: &["chercher", "aller à"],
+        icon: "search",
         bindings: &["⌘p"],
         scope: Scope::Global,
         requires: None,
     },
     Command {
         id: "help.shortcuts",
-        title: "Aide des raccourcis",
-        keywords: &["aide", "touches"],
+        icon: "keyboard",
         bindings: &["?"],
         scope: Scope::Global,
         requires: None,
     },
     Command {
         id: "list.next",
-        title: "Ligne suivante",
-        keywords: &["bas"],
+        icon: "arrow-down",
         bindings: &["j"],
         scope: Scope::List,
         requires: None,
     },
     Command {
         id: "list.previous",
-        title: "Ligne précédente",
-        keywords: &["haut"],
+        icon: "arrow-up",
         bindings: &["k"],
         scope: Scope::List,
         requires: None,
     },
     Command {
         id: "list.next_and_open",
-        title: "Ligne suivante et ouvrir",
-        keywords: &["liée"],
+        icon: "corner-down-right",
         bindings: &["J"],
         scope: Scope::List,
         requires: None,
     },
     Command {
         id: "list.previous_and_open",
-        title: "Ligne précédente et ouvrir",
-        keywords: &["liée"],
+        icon: "corner-up-right",
         bindings: &["K"],
         scope: Scope::List,
         requires: None,
     },
     Command {
         id: "list.first",
-        title: "Première ligne",
-        keywords: &["début"],
+        icon: "chevrons-up",
         bindings: &["g g"],
         scope: Scope::List,
         requires: None,
     },
     Command {
         id: "list.last",
-        title: "Dernière ligne",
-        keywords: &["fin"],
+        icon: "chevrons-down",
         bindings: &["G"],
         scope: Scope::List,
         requires: None,
     },
     Command {
         id: "list.open",
-        title: "Ouvrir",
-        keywords: &["entrer"],
+        icon: "square-arrow-out-up-right",
         bindings: &["o", "Enter"],
         scope: Scope::List,
         requires: None,
     },
     Command {
         id: "list.preview",
-        title: "Aperçu sans quitter la liste",
-        keywords: &["aperçu"],
+        icon: "eye",
         bindings: &["Space"],
         scope: Scope::List,
         requires: None,
     },
     Command {
         id: "list.select",
-        title: "Sélectionner",
-        keywords: &["multi"],
+        icon: "square-check",
         bindings: &["x"],
         scope: Scope::List,
         requires: None,
     },
     Command {
         id: "list.archive",
-        title: "Archiver la notification",
-        keywords: &["archiver"],
+        icon: "archive",
         bindings: &["e"],
         scope: Scope::List,
         requires: Some(Capability::Notifications),
     },
     Command {
         id: "list.mark_unread",
-        title: "Marquer comme non lu",
-        keywords: &["non lu"],
+        icon: "mail",
         bindings: &["u"],
         scope: Scope::List,
         requires: Some(Capability::Notifications),
     },
     Command {
         id: "list.filter",
-        title: "Filtrer dans la liste",
-        keywords: &["filtre", "chercher"],
+        icon: "funnel",
         bindings: &["/"],
         scope: Scope::List,
         requires: None,
     },
     Command {
         id: "list.clear",
-        title: "Effacer le filtre puis désélectionner",
-        keywords: &["annuler"],
+        icon: "x",
         bindings: &["Esc"],
         scope: Scope::List,
         requires: None,
     },
     Command {
         id: "pr.next_file",
-        title: "Fichier suivant",
-        keywords: &["fichier"],
+        icon: "file-plus",
         bindings: &["]"],
         scope: Scope::PullRequest,
         requires: None,
     },
     Command {
         id: "pr.previous_file",
-        title: "Fichier précédent",
-        keywords: &["fichier"],
+        icon: "file-minus",
         bindings: &["["],
         scope: Scope::PullRequest,
         requires: None,
     },
     Command {
         id: "pr.next_hunk",
-        title: "Hunk suivant",
-        keywords: &["hunk"],
+        icon: "chevron-down",
         bindings: &["}"],
         scope: Scope::Diff,
         requires: None,
     },
     Command {
         id: "pr.previous_hunk",
-        title: "Hunk précédent",
-        keywords: &["hunk"],
+        icon: "chevron-up",
         bindings: &["{"],
         scope: Scope::Diff,
         requires: None,
     },
     Command {
         id: "pr.next_unresolved",
-        title: "Thread non résolu suivant",
-        keywords: &["thread"],
+        icon: "message-circle",
         bindings: &["n"],
         scope: Scope::PullRequest,
         requires: None,
     },
     Command {
         id: "pr.previous_unresolved",
-        title: "Thread non résolu précédent",
-        keywords: &["thread"],
+        icon: "message-circle-off",
         bindings: &["p"],
         scope: Scope::PullRequest,
         requires: None,
     },
     Command {
         id: "pr.comment",
-        title: "Commenter à la position courante",
-        keywords: &["commentaire"],
+        icon: "message-square-plus",
         bindings: &["c"],
         scope: Scope::PullRequest,
         requires: Some(Capability::ReviewSubmit),
     },
     Command {
         id: "pr.reply",
-        title: "Répondre au thread",
-        keywords: &["réponse"],
+        icon: "reply",
         bindings: &["r"],
         scope: Scope::PullRequest,
         requires: Some(Capability::ReviewSubmit),
     },
     Command {
         id: "pr.resolve",
-        title: "Résoudre le thread",
-        keywords: &["résoudre"],
+        icon: "circle-check",
         bindings: &["R"],
         scope: Scope::PullRequest,
         requires: Some(Capability::ThreadResolve),
     },
     Command {
         id: "review.open",
-        title: "Ouvrir le panneau de review",
-        keywords: &["review", "soumettre"],
+        icon: "clipboard-check",
         bindings: &["v"],
         scope: Scope::PullRequest,
         requires: Some(Capability::ReviewSubmit),
     },
     Command {
         id: "pr.open_in_editor",
-        title: "Ouvrir dans l'éditeur externe",
-        keywords: &["éditeur"],
+        icon: "external-link",
         bindings: &["V"],
         scope: Scope::PullRequest,
         requires: None,
     },
     Command {
         id: "pr.mark_viewed",
-        title: "Marquer le fichier comme vu",
-        keywords: &["vu"],
+        icon: "eye-off",
         bindings: &["w"],
         scope: Scope::PullRequest,
         requires: None,
     },
     Command {
         id: "pr.merge",
-        title: "Merger",
-        keywords: &["merge", "fusionner"],
+        icon: "git-merge",
         bindings: &["m"],
         scope: Scope::PullRequest,
         requires: Some(Capability::Merge),
@@ -314,16 +281,14 @@ pub const REGISTRY: [Command; 32] = [
 pub const REVIEW_PANEL: [Command; 2] = [
     Command {
         id: "review.approve",
-        title: "Approuver et soumettre",
-        keywords: &["approuver"],
+        icon: "check",
         bindings: &["a"],
         scope: Scope::ReviewPanel,
         requires: Some(Capability::ReviewSubmit),
     },
     Command {
         id: "review.request_changes",
-        title: "Demander des changements",
-        keywords: &["changements"],
+        icon: "pencil-line",
         bindings: &["c"],
         scope: Scope::ReviewPanel,
         requires: Some(Capability::ReviewSubmit),
@@ -335,6 +300,10 @@ pub fn registry() -> Vec<&'static Command> {
 }
 
 impl Command {
+    pub fn title_key(&self) -> String {
+        format!("command.{}", self.id)
+    }
+
     pub fn chords(&self) -> Vec<KeyChord> {
         self.bindings
             .iter()
@@ -411,11 +380,16 @@ pub struct Match {
     pub score: i32,
 }
 
-pub fn rank(needle: &str, scope: Scope, capabilities: &Capabilities) -> Vec<Match> {
+pub fn rank(
+    needle: &str,
+    scope: Scope,
+    capabilities: &Capabilities,
+    catalogue: &crate::i18n::Catalogue,
+) -> Vec<Match> {
     let mut matched: Vec<Match> = available_in(scope, capabilities)
         .into_iter()
         .filter_map(|command| {
-            best_score(needle, command).map(|score| Match {
+            best_score(needle, command, catalogue).map(|score| Match {
                 id: command.id,
                 score,
             })
@@ -425,12 +399,14 @@ pub fn rank(needle: &str, scope: Scope, capabilities: &Capabilities) -> Vec<Matc
     matched
 }
 
-fn best_score(needle: &str, command: &Command) -> Option<i32> {
+fn best_score(needle: &str, command: &Command, catalogue: &crate::i18n::Catalogue) -> Option<i32> {
     if needle.is_empty() {
         return Some(0);
     }
-    let mut best: Option<i32> = fuzzy_score(needle, command.title);
-    for keyword in command.keywords {
+    let title_key = command.title_key();
+    let mut best: Option<i32> = fuzzy_score(needle, catalogue.get(&title_key));
+    let keyword_key = format!("{title_key}.keywords");
+    for keyword in catalogue.get(&keyword_key).split_whitespace() {
         if let Some(score) = fuzzy_score(needle, keyword) {
             best = Some(best.map_or(score - 5, |current| current.max(score - 5)));
         }

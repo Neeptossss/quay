@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod commands;
+pub mod i18n;
 pub mod ipc;
 pub mod keys;
 pub mod paths;

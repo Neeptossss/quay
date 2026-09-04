@@ -1,4 +1,5 @@
 use quay_app::commands::{Scope, available_in, declared_in, fuzzy_score, rank, registry, resolve};
+use quay_app::i18n::Catalogue;
 use quay_app::keys::KeyChord;
 use quay_forge::{Capabilities, Capability, GrantedScopes, TokenKind};
 
@@ -40,14 +41,33 @@ fn every_command_identifier_is_unique() {
 }
 
 #[test]
-fn every_command_carries_a_title_a_user_can_read() {
+fn every_command_carries_a_title_a_user_can_read_in_every_locale() {
+    for locale in quay_app::i18n::LOCALES {
+        let catalogue = Catalogue::for_locale(locale);
+        for command in registry() {
+            let title = catalogue.get(&command.title_key()).to_owned();
+            assert_ne!(title, command.title_key(), "{locale} misses {}", command.id);
+            assert!(
+                title.chars().next().is_some_and(char::is_uppercase),
+                "{} reads as {title} in {locale}",
+                command.id
+            );
+        }
+    }
+}
+
+#[test]
+fn every_command_names_an_icon() {
     for command in registry() {
-        assert!(!command.title.is_empty(), "{}", command.id);
+        assert!(!command.icon.is_empty(), "{}", command.id);
         assert!(
-            command.title.chars().next().is_some_and(char::is_uppercase),
-            "{} reads as {}",
+            command
+                .icon
+                .chars()
+                .all(|character| character.is_ascii_lowercase() || character == '-'),
+            "{} names {} which is not a lucide identifier",
             command.id,
-            command.title
+            command.icon
         );
     }
 }
@@ -206,7 +226,13 @@ fn a_command_the_user_can_recover_stays_visible_but_does_not_fire() {
 fn ranking_with_no_needle_offers_every_available_command() {
     let capabilities = full();
     assert_eq!(
-        rank("", Scope::PullRequest, &capabilities).len(),
+        rank(
+            "",
+            Scope::PullRequest,
+            &capabilities,
+            &Catalogue::for_locale("fr")
+        )
+        .len(),
         available_in(Scope::PullRequest, &capabilities).len()
     );
 }
@@ -232,7 +258,12 @@ fn a_needle_that_is_not_a_subsequence_matches_nothing() {
 #[test]
 fn ranking_puts_the_command_the_letters_name_first() {
     let capabilities = full();
-    let ranked = rank("merg", Scope::PullRequest, &capabilities);
+    let ranked = rank(
+        "merg",
+        Scope::PullRequest,
+        &capabilities,
+        &Catalogue::for_locale("fr"),
+    );
     match ranked.first() {
         Some(best) => assert_eq!(best.id, "pr.merge"),
         None => panic!("merging must be found"),
@@ -242,7 +273,7 @@ fn ranking_puts_the_command_the_letters_name_first() {
 #[test]
 fn ranking_never_offers_a_command_from_an_unrelated_scope() {
     let capabilities = full();
-    let ranked = rank("", Scope::List, &capabilities);
+    let ranked = rank("", Scope::List, &capabilities, &Catalogue::for_locale("fr"));
     assert!(!ranked.iter().any(|found| found.id == "pr.merge"));
 }
 

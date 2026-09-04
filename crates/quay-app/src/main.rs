@@ -34,6 +34,7 @@ fn main() -> ExitCode {
 
     let outcome = match arguments.first().map(String::as_str) {
         Some("login") => runtime.block_on(session::login()),
+        Some("logout") => session::logout(),
         Some("sync") => runtime.block_on(session::sync()),
         Some("watch") => {
             let cycles = arguments.get(1).and_then(|value| value.parse().ok());
@@ -83,6 +84,7 @@ fn usage() -> ExitCode {
     eprintln!("usage : quay <commande>");
     eprintln!("  ui       ouvrir la fenêtre (défaut sans argument)");
     eprintln!("  login    valider un jeton et le déposer dans le trousseau");
+    eprintln!("  logout   retirer le jeton du trousseau et faire taire ses demandes");
     eprintln!("  sync     rafraîchir depuis la forge et écrire dans SQLite");
     eprintln!("  watch    [n] boucler la synchronisation au rythme annoncé par la forge");
     eprintln!("  inbox    afficher la file de revue depuis SQLite");

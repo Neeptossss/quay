@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { age, checksLabel, checksTone, reviewLabel, reviewTone } from "../src/age";
+import { age, checksIcon, checksTone, reviewIcon, reviewTone, syncIcon } from "../src/state";
 
 const now = Date.parse("2026-09-04T10:00:00Z");
 
@@ -21,7 +21,7 @@ describe("age", () => {
 });
 
 describe("encodage d'état", () => {
-  it("réserve la couleur à l'état de CI et de review", () => {
+  it("réserve la couleur à l'état de CI et de revue", () => {
     expect(checksTone("success")).toBe("good");
     expect(checksTone("failure")).toBe("bad");
     expect(checksTone("pending")).toBe("waiting");
@@ -31,9 +31,13 @@ describe("encodage d'état", () => {
     expect(reviewTone(null)).toBe("absent");
   });
 
-  it("rend un état absent sans le confondre avec un état connu", () => {
-    expect(checksLabel(null)).toBe("—");
-    expect(reviewLabel(null)).toBe("—");
-    expect(checksLabel("success")).not.toBe(checksLabel(null));
+  it("donne une icône distincte à chaque état connu", () => {
+    const icons = [checksIcon("success"), checksIcon("failure"), checksIcon("pending"), checksIcon(null)];
+    expect(new Set(icons).size).toBe(icons.length);
+  });
+
+  it("ne confond pas un état absent avec un état connu", () => {
+    expect(reviewIcon(null)).not.toBe(reviewIcon("approved"));
+    expect(syncIcon("offline")).not.toBe(syncIcon("idle"));
   });
 });
