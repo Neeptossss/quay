@@ -5,8 +5,9 @@ use std::time::Instant;
 use quay_core::MutationState;
 use quay_core::Priority;
 use quay_forge::{
-    Capabilities, Capability, DevLocks, GovernorConfig, Identity, OutboundRequest, PollingSource,
-    RateGovernor, SearchSource, SharedValidators, SingleSignOn, Support, Token, read_identity,
+    Capabilities, Capability, DevLocks, GovernorConfig, Identity, OutboundRequest,
+    PollingCheckpoint, PollingSource, RateGovernor, SearchSource, SingleSignOn, Support, Token,
+    read_identity,
 };
 use quay_store::Store;
 use quay_store::inbox::{InboxFilter, InboxQuery};
@@ -140,7 +141,14 @@ fn report_capabilities(capabilities: &Capabilities) {
     }
 }
 
-pub async fn sync() -> Outcome {
+struct Session {
+    engine: SyncEngine,
+    checkpoint: PollingCheckpoint,
+    governor: Arc<RateGovernor>,
+    login: String,
+}
+
+async fn open_session() -> Result<Session, Box<dyn Error>> {
     let store = open_store()?;
     let login = stored_login(&store)?;
     let token = token_for(login.as_deref())?;
@@ -154,15 +162,30 @@ pub async fn sync() -> Outcome {
         &format!("{KEYCHAIN_SERVICE}/{}", identity.login),
     )?;
 
-    let validators = SharedValidators::holding(quay_sync::notification_validators(&store)?);
-    let polling = PollingSource::sharing(governor.clone(), API, validators.clone());
-    let mut engine = SyncEngine::new(store, governor.clone(), API, account_id)
-        .listening_to(Box::new(polling))
+    let checkpoint = PollingCheckpoint::holding(quay_sync::notification_validators(&store)?);
+    let engine = SyncEngine::new(store, governor.clone(), API, account_id)
+        .listening_to(Box::new(PollingSource::sharing(
+            governor.clone(),
+            API,
+            checkpoint.clone(),
+        )))
         .listening_to(Box::new(SearchSource::review_queue(governor.clone(), API)));
 
+    Ok(Session {
+        engine,
+        checkpoint,
+        governor,
+        login: identity.login,
+    })
+}
+
+async fn cycle(session: &mut Session) -> Outcome {
     let started = Instant::now();
-    let report = engine.tick().await?;
-    quay_sync::remember_notification_validators(engine.store(), validators.current().as_ref())?;
+    let report = session.engine.tick().await?;
+    quay_sync::remember_notification_validators(
+        session.engine.store(),
+        session.checkpoint.validators().as_ref(),
+    )?;
     println!(
         "{} signal(s), {} déjà à jour, {} récupérée(s), {} écrite(s), {} échec(s), en {:.0} ms",
         report.signals,
@@ -175,14 +198,53 @@ pub async fn sync() -> Outcome {
     for failure in &report.failures {
         println!("  échec : {failure}");
     }
+
+    let preload = session.engine.preload(&session.login).await?;
+    if preload.speculation_disabled {
+        println!("préchargement désactivé : son taux d'utilisation est passé sous le plancher");
+    } else {
+        println!(
+            "préchargement : {} planifiée(s), {} déjà fraîche(s), {} récupérée(s), {} refusée(s) par le plafond",
+            preload.planned, preload.already_fresh, preload.fetched, preload.refused_by_budget
+        );
+    }
+
+    let mutations = session.engine.drain_mutations(32).await?;
+    if mutations.sent + mutations.rolled_back + mutations.deferred > 0 {
+        println!(
+            "mutations : {} envoyée(s), {} annulée(s), {} différée(s)",
+            mutations.sent, mutations.rolled_back, mutations.deferred
+        );
+    }
+
     println!(
         "{} requête(s), {} point(s), {} révalidation(s) gratuite(s), état {:?}",
-        governor.issued_requests(),
-        governor.spent_points(),
-        governor.free_revalidations(),
-        governor.health()
+        session.governor.issued_requests(),
+        session.governor.spent_points(),
+        session.governor.free_revalidations(),
+        session.governor.health()
     );
     Ok(())
+}
+
+pub async fn sync() -> Outcome {
+    let mut session = open_session().await?;
+    cycle(&mut session).await
+}
+
+pub async fn watch(cycles: Option<usize>) -> Outcome {
+    let mut session = open_session().await?;
+    let mut completed = 0usize;
+    loop {
+        cycle(&mut session).await?;
+        completed += 1;
+        if cycles.is_some_and(|wanted| completed >= wanted) {
+            return Ok(());
+        }
+        let interval = session.checkpoint.interval();
+        println!("prochain passage dans {} s", interval.as_secs());
+        tokio::time::sleep(interval).await;
+    }
 }
 
 pub fn inbox() -> Outcome {
@@ -230,14 +292,7 @@ pub fn inbox() -> Outcome {
     Ok(())
 }
 
-fn now_seconds() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_secs() as i64)
-        .unwrap_or(0)
-}
-
-pub fn approve(locator: &str) -> Outcome {
+fn parse_locator(locator: &str) -> Result<(String, String, i64), Box<dyn Error>> {
     let (repository, number) = locator
         .rsplit_once('#')
         .ok_or("attendu : proprietaire/depot#numero")?;
@@ -247,10 +302,104 @@ pub fn approve(locator: &str) -> Outcome {
     let number: i64 = number
         .parse()
         .map_err(|_| "le numéro doit être un entier")?;
+    Ok((owner.to_owned(), name.to_owned(), number))
+}
 
+pub fn show(locator: &str) -> Outcome {
+    let (owner, name, number) = parse_locator(locator)?;
+    let store = open_store()?;
+
+    let started = Instant::now();
+    let view = store.pull_request_view(&owner, &name, number)?;
+    let elapsed = started.elapsed();
+
+    let key = format!("{owner}/{name}#{number}");
+    let now = now_seconds();
+    store.note_navigation(&key, view.is_some(), now)?;
+    let was_preloaded = store.note_speculation_used(&key)?;
+    store.note_navigation_event(
+        "inbox:list",
+        "pr:detail",
+        "cmd:pr.open",
+        Some("pr"),
+        None,
+        now,
+    )?;
+
+    let Some(view) = view else {
+        println!("{locator} n'est pas dans la base locale, lancer `quay sync`");
+        return Ok(());
+    };
+
+    println!(
+        "{}/{}#{} — {}",
+        view.owner, view.name, view.number, view.title
+    );
+    println!(
+        "  {} par {}, review {}, checks {}, {} thread(s) non résolu(s)",
+        view.state,
+        view.author,
+        view.review_state.as_deref().unwrap_or("aucune"),
+        view.checks_state.as_deref().unwrap_or("aucun"),
+        view.unresolved_threads()
+    );
+    if view.threads.is_empty() {
+        println!("  aucun thread de review");
+    }
+    for thread in &view.threads {
+        let mark = if thread.is_resolved {
+            "résolu "
+        } else {
+            "ouvert "
+        };
+        let outdated = if thread.is_outdated {
+            " (obsolète)"
+        } else {
+            ""
+        };
+        println!(
+            "  [{mark}] {}:{}{outdated}",
+            thread.path,
+            thread
+                .line
+                .map(|line| line.to_string())
+                .unwrap_or_else(|| "?".to_owned())
+        );
+        for comment in &thread.comments {
+            println!("      {} — {}", comment.author, first_line(&comment.body));
+        }
+    }
+
+    println!();
+    println!(
+        "servi depuis SQLite en {:.3} ms{}",
+        elapsed.as_secs_f64() * 1_000.0,
+        if was_preloaded { ", préchargé" } else { "" }
+    );
+    Ok(())
+}
+
+fn first_line(body: &str) -> String {
+    let line = body.lines().next().unwrap_or_default();
+    if line.chars().count() > 72 {
+        format!("{}…", line.chars().take(71).collect::<String>())
+    } else {
+        line.to_owned()
+    }
+}
+
+fn now_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+pub fn approve(locator: &str) -> Outcome {
+    let (owner, name, number) = parse_locator(locator)?;
     let mut store = open_store()?;
     let node_id = store
-        .find_pull_request(owner, name, number)?
+        .find_pull_request(&owner, &name, number)?
         .ok_or_else(|| format!("{locator} n'est pas dans la base locale, lancer `quay sync`"))?;
 
     let now = now_seconds();
@@ -360,6 +509,26 @@ pub async fn status() -> Outcome {
     println!("local     {stored} pull request(s) ouverte(s) sur {repositories} dépôt(s)");
     println!("base      {}", store.path().display());
     println!("durabilité {:?}", store.durability());
+    let speculation = store.speculation_utilisation(500)?;
+    let navigations = store.navigations_served_locally(500)?;
+    println!(
+        "préchargement : {}/{} utilisé(s){}",
+        speculation.used,
+        speculation.observed,
+        speculation
+            .percent()
+            .map(|percent| format!(", soit {percent:.0} %"))
+            .unwrap_or_default()
+    );
+    println!(
+        "navigations servies localement : {}/{}{}",
+        navigations.used,
+        navigations.observed,
+        navigations
+            .percent()
+            .map(|percent| format!(", soit {percent:.0} %"))
+            .unwrap_or_default()
+    );
     print_queue(&store)?;
     report_capabilities(&Capabilities::from_identity(&identity));
     Ok(())

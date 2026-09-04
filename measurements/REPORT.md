@@ -2,7 +2,7 @@
 
 Ce fichier est généré par `cargo run -p xtask -- report` à partir des logs bruts de `measurements/raw/`. Il ne se modifie pas à la main.
 
-- Généré le : 2026-09-04T16:13:00.071815Z
+- Généré le : 2026-09-04T16:33:10.190648Z
 - Machine : aarch64-macos
 
 ## Budgets du §4

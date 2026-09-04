@@ -873,3 +873,91 @@ locale est revenue à `review_state = NULL`, ce qu'elle était avant.
 
 Préchargement couche 1 (§7.6), puis la boucle de scheduler cadencée par `due_for_refresh` et les
 trois tiers du §7.1, puis l'interface.
+
+---
+
+## Session 2026-09-04 (suite) — M1, préchargement couche 1 (§7.6) et boucle de scheduler
+
+### Ce qui a été fait
+
+- **Règles déterministes de la couche 1**, en logique pure dans `quay-core` : l'inbox qui se charge
+  précharge ses cinq premières entrées, une PR ouverte précharge sa voisine précédente et sa
+  voisine suivante. Douze tests, aucun I/O.
+- **Deux règles du §7.6 ne sont pas implémentées** et c'est délibéré : « le curseur reste sur une
+  ligne plus de 150 ms » suppose un curseur, « un diff est ouvert » suppose une vue de diff et des
+  fichiers qu'on ne récupère pas encore. Les écrire aujourd'hui serait du code sans déclencheur.
+  La cinquième, le retour au premier plan, suppose une fenêtre.
+- **Gouvernance** : priorité `Speculative`, donc soumise au plafond de 15 % déjà tenu par le
+  gouverneur, et auto-désactivation sous 40 % d'utilisation sur une fenêtre glissante de 500
+  préchargements. La règle est pure et testée aux deux bornes.
+- **`preload_outcome`** distingue deux natures de ligne par sa colonne `reason` : un préchargement
+  spéculatif, et une navigation. `used` veut dire « servi localement » dans les deux cas. La
+  distinction compte : le §7.6 règle la spéculation sur le taux d'utilisation des préchargements,
+  le §4 mesure le taux de navigations servies depuis le cache, et une navigation peut être servie
+  localement sans avoir été préchargée.
+- **`navigation_event`** est collecté, sans consommateur, comme le demande le §9 pour le M1.
+- **`quay show`** rend une PR et ses threads depuis SQLite, enregistre la navigation, et marque le
+  préchargement comme utilisé le cas échéant.
+- **`quay watch`** boucle au rythme annoncé par la forge. `PollingSource` expose désormais un point
+  de reprise partagé qui porte à la fois les validateurs et l'intervalle : sans cela la boucle
+  n'aurait pas pu respecter `X-Poll-Interval`, elle aurait rejoué le sien.
+
+### Un défaut de conception trouvé en regardant tourner la boucle
+
+Le premier passage affichait, à chaque cycle : `5 planifiée(s), 0 déjà fraîche(s), 5 récupérée(s)`.
+Le préchargement refetchait donc les mêmes cinq pull requests toutes les minutes, indéfiniment, alors
+que le tick venait de confirmer qu'elles n'avaient pas changé.
+
+Cause : quand un signal confirmait que la copie locale était à jour, la réconciliation renvoyait
+`AlreadyCurrent` **sans repousser `stale_after`**. La fraîcheur expirait donc au rythme du cycle et
+le préchargement croyait avoir du travail. Confondre « on n'a pas refetché depuis un moment » avec
+« la copie n'est plus à jour » est exactement l'erreur que `stale_after` existe pour éviter.
+
+Corrigé : un signal qui confirme la copie repousse son échéance. Le test le fige, et vérifie en plus
+qu'un préchargement lancé juste après ne récupère rien.
+
+L'effet sur le régime permanent, mesuré sur deux cycles réels :
+
+| | Avant | Après |
+|---|---|---|
+| Préchargements récupérés par cycle | 5 | **0** |
+| Requêtes du deuxième cycle | 8 | **3** |
+| Points du deuxième cycle | 7 | **2** |
+
+À un cycle par minute, cela **projette** 120 requêtes par heure contre 300 auparavant. C'est une
+projection arithmétique à partir de deux cycles mesurés, pas une mesure sur une heure : le budget
+`github_quota_per_hour` reste `MISSING`.
+
+Le plafond de spéculation aurait fini par couper le gaspillage au bout d'environ quarante-cinq
+minutes de boucle, ce qui est son rôle. Mais un garde-fou qui rattrape un défaut n'est pas une
+excuse pour le laisser.
+
+### Ce que je n'écris pas dans les budgets
+
+`cache_served_navigations` du §4 demande plus de 85 % de navigations servies depuis le cache sur une
+fenêtre glissante. La mécanique existe et `quay status` affiche le chiffre, mais **je n'alimente pas
+le budget** : il n'y a qu'une poignée de navigations réelles, et un pourcentage sur un échantillon
+d'une unité ne veut rien dire. Il passera au vert quand un usage réel aura rempli la fenêtre, pas
+avant. Fabriquer 500 `quay show` pour verdir une ligne serait exactement le chiffre plausible et
+faux que le `CLAUDE.md` interdit.
+
+De même, l'utilisation du préchargement affiche 20 % après la première session, sous le plancher de
+40 %. La spéculation reste active parce que la fenêtre de 500 n'est pas remplie, ce qui est la règle
+du §7.6 appliquée telle quelle.
+
+### Réserves
+
+- Le préchargement est déclenché par le cycle de la boucle, pas par un événement d'interface. C'est
+  l'approximation la plus proche de « l'inbox est à l'écran » sans écran. Le vrai déclencheur du
+  §7.6 arrive avec l'interface.
+- Le tier hot du §7.1 n'a toujours pas de consommateur, ni la dégradation en arrière-plan : les deux
+  suivent le focus d'une fenêtre.
+- `SearchSource` reste hors du modèle de seau du gouverneur, cf. la réserve de l'étape 7.
+
+### Ce qu'il faut faire ensuite
+
+Les briques du sync engine du M1 sont posées : trois tiers déclarés, gouverneur, file de mutations,
+préchargement couche 1, boucle. Ce qui reste au M1 est de l'interface : palette de commandes et carte
+des touches (§8.2, §8.3), vues sauvegardées avec le DSL (§8.4), et la fenêtre Tauri avec le store
+Svelte. C'est là que les budgets `keystroke_to_pixel`, `cold_start_to_first_paint` et
+`cached_pull_request_navigation` deviendront mesurables.

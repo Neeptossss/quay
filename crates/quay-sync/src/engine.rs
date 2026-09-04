@@ -1,13 +1,28 @@
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use quay_core::{ChangeSignal, EventSource, Priority, Tier, merge_deduplicated};
+use quay_core::{
+    ChangeSignal, EventSource, NavigationState, Priority, Tier, merge_deduplicated, plan_preloads,
+    speculation_stays_enabled,
+};
 use quay_forge::{CacheValidators, RateGovernor, fetch_pull_request};
+use quay_store::inbox::{InboxFilter, InboxQuery};
 use quay_store::{CacheEntry, Store};
 
 use crate::error::SyncError;
 
 const DUE_BATCH: i64 = 64;
+const UTILISATION_WINDOW: usize = 500;
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct PreloadReport {
+    pub planned: usize,
+    pub already_fresh: usize,
+    pub fetched: usize,
+    pub refused_by_budget: usize,
+    pub speculation_disabled: bool,
+    pub failures: Vec<String>,
+}
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct TickReport {
@@ -46,6 +61,85 @@ impl SyncEngine {
 
     pub fn store(&self) -> &Store {
         &self.store
+    }
+
+    pub async fn preload(&mut self, viewer: &str) -> Result<PreloadReport, SyncError> {
+        let utilisation = self.store.speculation_utilisation(UTILISATION_WINDOW)?;
+        if !speculation_stays_enabled(utilisation.used, utilisation.observed) {
+            return Ok(PreloadReport {
+                speculation_disabled: true,
+                ..PreloadReport::default()
+            });
+        }
+
+        let filter = InboxFilter {
+            viewer: viewer.to_owned(),
+            ..InboxFilter::default()
+        };
+        let list: Vec<String> = self
+            .store
+            .inbox(InboxQuery::ReviewRequestedExact, &filter)?
+            .iter()
+            .map(|row| format!("{}/{}#{}", row.owner, row.name, row.number))
+            .collect();
+
+        let planned = plan_preloads(&NavigationState::inbox(list));
+        let mut report = PreloadReport {
+            planned: planned.len(),
+            ..PreloadReport::default()
+        };
+        let now = now_seconds();
+
+        for request in planned {
+            let key = cache_key(&request.key);
+            match self.store.freshness(&key)? {
+                Some(entry) if !entry.is_stale_at(now) => {
+                    report.already_fresh += 1;
+                    continue;
+                }
+                _ => {}
+            }
+            let Some((owner, name, number)) = entity_locator(&request.key) else {
+                report
+                    .failures
+                    .push(format!("unreadable key {}", request.key));
+                continue;
+            };
+            match fetch_pull_request(
+                &self.governor,
+                &self.graphql_endpoint,
+                &owner,
+                &name,
+                number,
+                Priority::Speculative,
+            )
+            .await
+            {
+                Ok(snapshot) => {
+                    self.store.save_pull_request(self.account_id, &snapshot)?;
+                    self.remember_freshness(&key, now)?;
+                    self.store
+                        .note_speculation(&request.key, request.reason, now)?;
+                    report.fetched += 1;
+                }
+                Err(quay_forge::ForgeError::SpeculationBudgetExhausted { .. }) => {
+                    report.refused_by_budget += 1;
+                }
+                Err(error) => report.failures.push(format!("{}: {error}", request.key)),
+            }
+        }
+        Ok(report)
+    }
+
+    fn remember_freshness(&self, key: &str, now: i64) -> Result<(), SyncError> {
+        Ok(self.store.remember_freshness(&CacheEntry {
+            key: key.to_owned(),
+            etag: None,
+            last_modified: None,
+            fetched_at: now,
+            stale_after: now + Tier::Warm.refresh_interval().as_secs() as i64,
+            tier: Tier::Warm,
+        })?)
     }
 
     pub async fn drain_mutations(
@@ -102,6 +196,8 @@ impl SyncEngine {
 
         match self.store.freshness(&key) {
             Ok(Some(entry)) if entry.fetched_at >= signal.updated_at.0 => {
+                self.remember_freshness(&key, now_seconds())
+                    .map_err(|error| format!("{}: {error}", signal.entity.key))?;
                 return Ok(Outcome::AlreadyCurrent);
             }
             Ok(_) => {}
@@ -123,17 +219,7 @@ impl SyncEngine {
             .save_pull_request(self.account_id, &snapshot)
             .map_err(|error| format!("{}: {error}", signal.entity.key))?;
 
-        let fetched_at = now_seconds();
-        let entry = CacheEntry {
-            key,
-            etag: None,
-            last_modified: None,
-            fetched_at,
-            stale_after: fetched_at + Tier::Warm.refresh_interval().as_secs() as i64,
-            tier: Tier::Warm,
-        };
-        self.store
-            .remember_freshness(&entry)
+        self.remember_freshness(&key, now_seconds())
             .map_err(|error| format!("{}: {error}", signal.entity.key))?;
         Ok(Outcome::Stored)
     }
@@ -173,6 +259,12 @@ enum Outcome {
 
 fn cache_key(entity_key: &str) -> String {
     format!("pr:{entity_key}")
+}
+
+fn entity_locator(entity_key: &str) -> Option<(String, String, i64)> {
+    let (repository, number) = entity_key.rsplit_once('#')?;
+    let (owner, name) = repository.split_once('/')?;
+    Some((owner.to_owned(), name.to_owned(), number.parse().ok()?))
 }
 
 fn now_seconds() -> i64 {

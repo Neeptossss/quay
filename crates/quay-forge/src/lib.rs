@@ -34,7 +34,7 @@ pub use keychain::Keychain;
 pub use locks::DevLocks;
 pub use mutation_request::{MutationTarget, build as build_mutation_request};
 pub use notifications::{pull_request_locator, signal_from};
-pub use polling::{PollingSource, SharedValidators, epoch_seconds};
+pub use polling::{PollingCheckpoint, PollingSource, epoch_seconds};
 pub use scopes::GrantedScopes;
 pub use search::{SearchSource, repository_from_url};
 pub use token::Token;

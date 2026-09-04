@@ -3,6 +3,7 @@
 
 mod change;
 mod mutations;
+mod preload;
 mod priority;
 mod records;
 mod source;
@@ -10,6 +11,10 @@ mod tier;
 
 pub use change::{ChangeSignal, EntityId, EntityKind, Timestamp, merge_deduplicated};
 pub use mutations::{Mutation, MutationKind, MutationState};
+pub use preload::{
+    NavigationState, PreloadReason, PreloadRequest, plan as plan_preloads,
+    speculation_stays_enabled,
+};
 pub use priority::Priority;
 pub use records::{
     PullRequest, PullRequestSnapshot, PullRequestState, Repository, ReviewComment, ReviewRequest,

@@ -17,29 +17,51 @@ pub fn epoch_seconds(rfc3339: &str) -> Option<i64> {
         .map(|moment| moment.unix_timestamp())
 }
 
-#[derive(Clone, Default)]
-pub struct SharedValidators {
-    cell: Arc<Mutex<Option<CacheValidators>>>,
+struct Checkpoint {
+    validators: Option<CacheValidators>,
+    interval: Duration,
 }
 
-impl SharedValidators {
+#[derive(Clone)]
+pub struct PollingCheckpoint {
+    cell: Arc<Mutex<Checkpoint>>,
+}
+
+impl Default for PollingCheckpoint {
+    fn default() -> Self {
+        Self::holding(None)
+    }
+}
+
+impl PollingCheckpoint {
     pub fn holding(validators: Option<CacheValidators>) -> Self {
         Self {
-            cell: Arc::new(Mutex::new(validators)),
+            cell: Arc::new(Mutex::new(Checkpoint {
+                validators,
+                interval: Tier::Warm.refresh_interval(),
+            })),
         }
     }
 
-    pub fn current(&self) -> Option<CacheValidators> {
+    pub fn validators(&self) -> Option<CacheValidators> {
+        self.read(|checkpoint| checkpoint.validators.clone())
+    }
+
+    pub fn interval(&self) -> Duration {
+        self.read(|checkpoint| checkpoint.interval)
+    }
+
+    fn read<T>(&self, take: impl FnOnce(&Checkpoint) -> T) -> T {
         match self.cell.lock() {
-            Ok(guard) => guard.clone(),
-            Err(poisoned) => poisoned.into_inner().clone(),
+            Ok(guard) => take(&guard),
+            Err(poisoned) => take(&poisoned.into_inner()),
         }
     }
 
-    fn replace(&self, validators: CacheValidators) {
+    fn write(&self, change: impl FnOnce(&mut Checkpoint)) {
         match self.cell.lock() {
-            Ok(mut guard) => *guard = Some(validators),
-            Err(poisoned) => *poisoned.into_inner() = Some(validators),
+            Ok(mut guard) => change(&mut guard),
+            Err(poisoned) => change(&mut poisoned.into_inner()),
         }
     }
 }
@@ -47,38 +69,32 @@ impl SharedValidators {
 pub struct PollingSource {
     governor: Arc<RateGovernor>,
     endpoint: String,
-    validators: SharedValidators,
-    interval: Duration,
+    checkpoint: PollingCheckpoint,
     last_status: Option<u16>,
     last_error: Option<String>,
 }
 
 impl PollingSource {
     pub fn new(governor: Arc<RateGovernor>, api_base: &str) -> Self {
-        Self::sharing(governor, api_base, SharedValidators::default())
+        Self::sharing(governor, api_base, PollingCheckpoint::default())
     }
 
     pub fn sharing(
         governor: Arc<RateGovernor>,
         api_base: &str,
-        validators: SharedValidators,
+        checkpoint: PollingCheckpoint,
     ) -> Self {
         Self {
             governor,
             endpoint: format!("{}/notifications", api_base.trim_end_matches('/')),
-            validators,
-            interval: Tier::Warm.refresh_interval(),
+            checkpoint,
             last_status: None,
             last_error: None,
         }
     }
 
-    pub fn validators(&self) -> SharedValidators {
-        self.validators.clone()
-    }
-
-    pub fn interval(&self) -> Duration {
-        self.interval
+    pub fn checkpoint(&self) -> PollingCheckpoint {
+        self.checkpoint.clone()
     }
 
     pub fn last_status(&self) -> Option<u16> {
@@ -94,7 +110,7 @@ impl PollingSource {
 impl EventSource for PollingSource {
     async fn next(&mut self) -> Vec<ChangeSignal> {
         let request = OutboundRequest::rest_read(&self.endpoint, Priority::Warm)
-            .revalidating(self.validators.current());
+            .revalidating(self.checkpoint.validators());
         let response = match self.governor.send(request).await {
             Ok(response) => response,
             Err(error) => {
@@ -105,10 +121,14 @@ impl EventSource for PollingSource {
         };
 
         self.last_status = Some(response.status);
-        self.interval = Tier::Warm.interval_respecting(response.poll_interval);
-        if let Some(validators) = response.validators.clone() {
-            self.validators.replace(validators);
-        }
+        let advised = Tier::Warm.interval_respecting(response.poll_interval);
+        let validators = response.validators.clone();
+        self.checkpoint.write(|checkpoint| {
+            checkpoint.interval = advised;
+            if let Some(validators) = validators {
+                checkpoint.validators = Some(validators);
+            }
+        });
 
         if response.is_not_modified() {
             self.last_error = None;

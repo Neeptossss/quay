@@ -402,3 +402,53 @@ async fn the_inbox_validators_survive_a_round_trip_through_the_store() {
         other => panic!("the validators must come back, got {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn a_signal_confirming_the_local_copy_extends_its_freshness_so_nothing_refetches_it() {
+    let server = MockServer::start().await;
+    mount_notifications(
+        &server,
+        ResponseTemplate::new(200).set_body_json(json!([notification(
+            "PullRequest",
+            "https://api.github.com/repos/acme/api/pulls/1234"
+        )])),
+    )
+    .await;
+    Mock::given(method("POST"))
+        .and(path("/graphql"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(detail(vec![], false, "")))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let (_directory, mut engine) = engine(&server);
+    match engine.tick().await {
+        Ok(report) => assert_eq!(report.stored, 1),
+        Err(error) => panic!("the first tick must succeed: {error}"),
+    }
+    let after_first = match engine.store().freshness("pr:acme/api#1234") {
+        Ok(Some(entry)) => entry.stale_after,
+        other => panic!("the freshness must exist, got {other:?}"),
+    };
+
+    match engine.tick().await {
+        Ok(report) => assert_eq!(report.already_current, 1),
+        Err(error) => panic!("the second tick must succeed: {error}"),
+    }
+    match engine.store().freshness("pr:acme/api#1234") {
+        Ok(Some(entry)) => assert!(
+            entry.stale_after >= after_first,
+            "confirming a copy is current must push its deadline out, not let it expire"
+        ),
+        other => panic!("the freshness must exist, got {other:?}"),
+    }
+
+    let preloaded = match engine.preload(VIEWER).await {
+        Ok(report) => report,
+        Err(error) => panic!("the preload must succeed: {error}"),
+    };
+    assert_eq!(
+        preloaded.fetched, 0,
+        "a copy just confirmed current is never preloaded again"
+    );
+}

@@ -235,6 +235,71 @@ impl Store {
         write::save_snapshot(&mut self.connection, account_id, snapshot)
     }
 
+    pub fn pull_request_view(
+        &self,
+        owner: &str,
+        name: &str,
+        number: i64,
+    ) -> Result<Option<crate::detail::PullRequestView>, StoreError> {
+        crate::detail::pull_request(&self.connection, owner, name, number)
+    }
+
+    pub fn note_speculation(
+        &self,
+        key: &str,
+        reason: quay_core::PreloadReason,
+        at: i64,
+    ) -> Result<i64, StoreError> {
+        crate::preload::record_speculation(&self.connection, key, reason, at)
+    }
+
+    pub fn note_navigation(
+        &self,
+        key: &str,
+        served_locally: bool,
+        at: i64,
+    ) -> Result<i64, StoreError> {
+        crate::preload::record_navigation(&self.connection, key, served_locally, at)
+    }
+
+    pub fn note_speculation_used(&self, key: &str) -> Result<bool, StoreError> {
+        crate::preload::mark_speculation_used(&self.connection, key)
+    }
+
+    pub fn speculation_utilisation(
+        &self,
+        window: usize,
+    ) -> Result<crate::preload::Utilisation, StoreError> {
+        crate::preload::speculation_utilisation(&self.connection, window)
+    }
+
+    pub fn navigations_served_locally(
+        &self,
+        window: usize,
+    ) -> Result<crate::preload::Utilisation, StoreError> {
+        crate::preload::navigations_served_locally(&self.connection, window)
+    }
+
+    pub fn note_navigation_event(
+        &self,
+        from_state: &str,
+        to_state: &str,
+        action: &str,
+        entity_kind: Option<&str>,
+        dwell_ms: Option<i64>,
+        at: i64,
+    ) -> Result<(), StoreError> {
+        crate::preload::record_navigation_event(
+            &self.connection,
+            from_state,
+            to_state,
+            action,
+            entity_kind,
+            dwell_ms,
+            at,
+        )
+    }
+
     pub fn connection(&self) -> &Connection {
         &self.connection
     }

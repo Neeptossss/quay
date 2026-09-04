@@ -6,7 +6,7 @@ mod error;
 mod worker;
 
 pub use engine::{
-    NOTIFICATIONS_KEY, SyncEngine, TickReport, notification_validators,
+    NOTIFICATIONS_KEY, PreloadReport, SyncEngine, TickReport, notification_validators,
     remember_notification_validators,
 };
 pub use error::SyncError;

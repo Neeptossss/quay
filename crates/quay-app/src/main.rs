@@ -26,7 +26,15 @@ fn main() -> ExitCode {
     let outcome = match arguments.first().map(String::as_str) {
         Some("login") => runtime.block_on(session::login()),
         Some("sync") => runtime.block_on(session::sync()),
+        Some("watch") => {
+            let cycles = arguments.get(1).and_then(|value| value.parse().ok());
+            runtime.block_on(session::watch(cycles))
+        }
         Some("inbox") => session::inbox(),
+        Some("show") => match arguments.get(1) {
+            Some(locator) => session::show(locator),
+            None => return usage(),
+        },
         Some("approve") => match arguments.get(1) {
             Some(locator) => session::approve(locator),
             None => return usage(),
@@ -53,7 +61,9 @@ fn usage() -> ExitCode {
     eprintln!("usage : quay <commande>");
     eprintln!("  login    valider un jeton et le déposer dans le trousseau");
     eprintln!("  sync     rafraîchir depuis la forge et écrire dans SQLite");
+    eprintln!("  watch    [n] boucler la synchronisation au rythme annoncé par la forge");
     eprintln!("  inbox    afficher la file de revue depuis SQLite");
+    eprintln!("  show     <proprietaire/depot#numero> afficher une PR depuis SQLite");
     eprintln!("  approve  <proprietaire/depot#numero> approuver, en optimiste");
     eprintln!("  push     vider la file de mutations vers la forge");
     eprintln!("  cancel   <id> renoncer à une mutation et défaire son état optimiste");
