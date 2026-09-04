@@ -41,3 +41,20 @@ export function syncIcon(phase: string): string {
   if (phase === "idle") return "circle-check";
   return "loader";
 }
+
+export interface ScopeSplit<T> {
+  shown: T[];
+  hidden: T[];
+}
+
+export function activeFirst<T extends { openPullRequests: number }>(
+  scopes: T[],
+  expanded: boolean,
+  keep = 6,
+): ScopeSplit<T> {
+  if (expanded) return { shown: scopes, hidden: [] };
+  const active = scopes.filter((scope) => scope.openPullRequests > 0);
+  const shown = active.length > 0 ? active.slice(0, keep) : scopes.slice(0, keep);
+  const hidden = scopes.filter((scope) => !shown.includes(scope));
+  return { shown, hidden };
+}

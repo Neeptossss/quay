@@ -1544,9 +1544,22 @@ Chaque entrée porte son décompte de pull requests ouvertes.
 ### Vérification
 
 Le schéma, le langage, le compilateur et le rescopage sont couverts par des tests. La base réelle
-montre 9 organisations mémorisées et les propriétaires attendus. **La capture d'écran du sélecteur
-n'a pas pu être prise** : la machine s'est verrouillée pendant la session. L'affichage est donc
-vérifié par le typage, les tests de montage et les données, pas à l'œil.
+montre 9 organisations mémorisées et les propriétaires attendus, dont `vercel`.
+
+La capture d'écran a d'abord été impossible, la machine s'étant verrouillée, puis prise une fois
+déverrouillée. Le système était passé en thème sombre entre-temps, ce qui a **vérifié gratuitement**
+que les jetons tiennent dans les deux thèmes.
+
+### Une correction de densité
+
+La première capture a montré un défaut que les tests ne pouvaient pas voir : onze organisations, dont
+sept sans aucune pull request, poussaient les vues sous la ligne de flottaison. Le §8.5 dit que la
+densité **est** la fonctionnalité.
+
+La barre latérale ne montre donc que les organisations qui ont des pull requests ouvertes, plafonnées
+à six, et replie les autres derrière une ligne « 7 autres » qui se déplie. Le partage est une
+fonction pure, testée sur six cas dont la liste vide, la liste entièrement inactive, et le
+plafonnement à vingt organisations.
 
 ### Réserves
 

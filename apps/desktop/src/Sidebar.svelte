@@ -3,7 +3,7 @@
   import Kbd from "./Kbd.svelte";
   import type { QueuedMutation, ScopeEntry, SyncState, ViewEntry } from "./ipc";
   import { t } from "./i18n";
-  import { syncIcon } from "./state";
+  import { activeFirst, syncIcon } from "./state";
 
   let {
     views,
@@ -30,6 +30,9 @@
     onOpen: (name: string) => void;
     onOrganization: (login: string | null) => void;
   } = $props();
+
+  let expanded = $state(false);
+  const split = $derived(activeFirst(organizations, expanded));
 </script>
 
 <aside class="sidebar">
@@ -46,13 +49,26 @@
         <span class="truncate">{t("org.all")}</span>
         <span class="tally">{organizations.reduce((total, entry) => total + entry.openPullRequests, 0)}</span>
       </button>
-      {#each organizations as entry (entry.login)}
+      {#each split.shown as entry (entry.login)}
         <button class="item" aria-current={organization === entry.login} onclick={() => onOrganization(entry.login)}>
           <Icon name={entry.isMember ? "user" : "git-branch"} size={13} />
           <span class="truncate">{entry.displayName ?? entry.login}</span>
           <span class="tally">{entry.openPullRequests || ""}</span>
         </button>
       {/each}
+      {#if split.hidden.length > 0}
+        <button class="item quiet" onclick={() => (expanded = true)}>
+          <Icon name="chevron-down" size={13} />
+          <span class="truncate">{t("org.more", { count: split.hidden.length })}</span>
+          <span></span>
+        </button>
+      {:else if expanded && organizations.length > 6}
+        <button class="item quiet" onclick={() => (expanded = false)}>
+          <Icon name="chevron-up" size={13} />
+          <span class="truncate">{t("org.fewer")}</span>
+          <span></span>
+        </button>
+      {/if}
     {/if}
 
     <div class="group">{t("nav.views")}</div>

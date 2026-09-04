@@ -41,3 +41,45 @@ describe("encodage d'état", () => {
     expect(syncIcon("offline")).not.toBe(syncIcon("idle"));
   });
 });
+
+import { activeFirst } from "../src/state";
+
+const scope = (login: string, openPullRequests: number) => ({ login, openPullRequests });
+
+describe("activeFirst", () => {
+  it("ne montre que les organisations qui ont des pull requests ouvertes", () => {
+    const split = activeFirst([scope("a", 3), scope("b", 0), scope("c", 1)], false);
+    expect(split.shown.map((entry) => entry.login)).toEqual(["a", "c"]);
+    expect(split.hidden.map((entry) => entry.login)).toEqual(["b"]);
+  });
+
+  it("montre tout quand on déplie", () => {
+    const split = activeFirst([scope("a", 3), scope("b", 0)], true);
+    expect(split.shown).toHaveLength(2);
+    expect(split.hidden).toHaveLength(0);
+  });
+
+  it("ne cache rien quand tout est actif", () => {
+    const split = activeFirst([scope("a", 1), scope("b", 2)], false);
+    expect(split.hidden).toHaveLength(0);
+  });
+
+  it("plafonne la liste repliée pour garder la barre latérale dense", () => {
+    const many = Array.from({ length: 20 }, (_, index) => scope(`o${index}`, index + 1));
+    const split = activeFirst(many, false);
+    expect(split.shown).toHaveLength(6);
+    expect(split.hidden).toHaveLength(14);
+  });
+
+  it("montre les premières organisations quand aucune n'a de pull request", () => {
+    const split = activeFirst([scope("a", 0), scope("b", 0)], false);
+    expect(split.shown).toHaveLength(2);
+    expect(split.hidden).toHaveLength(0);
+  });
+
+  it("ne cache ni ne montre rien sur une liste vide", () => {
+    const split = activeFirst([], false);
+    expect(split.shown).toHaveLength(0);
+    expect(split.hidden).toHaveLength(0);
+  });
+});

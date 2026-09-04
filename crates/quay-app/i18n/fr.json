@@ -95,6 +95,8 @@
   "nav.organizations": "Organisations",
   "nav.views": "Vues",
   "org.all": "Toutes",
+  "org.fewer": "Réduire",
+  "org.more": "{count} autres",
   "palette.empty": "Aucune commande ici.",
   "palette.placeholder": "Rechercher une commande…",
   "queue.failed": "{count} en échec",

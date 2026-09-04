@@ -62,6 +62,10 @@
   font-weight: 500;
 }
 
+.sidebar .item.quiet {
+  color: var(--ink-faint);
+}
+
 .sidebar .tally {
   font-family: var(--font-mono);
   font-size: var(--text-caps);
