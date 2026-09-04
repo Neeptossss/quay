@@ -374,3 +374,116 @@ choisi et pas subi. Non mesuré, à instrumenter le jour où la file de mutation
 2. Étape 5 : migrations versionnées par-dessus `0001_initial.sql`, qui est désormais stable.
 3. Le logger de latence du §9 reste à écrire.
 4. Trancher `synchronous = NORMAL` quand la file de mutations existe.
+
+---
+
+## Session 2026-09-04 (suite) — étape 4, `quay-forge`
+
+### Ce qui a été fait
+
+- **Couche transport** (`transport.rs`) : types dédiés pour `/user`, `/user/orgs`, `/notifications`
+  et les erreurs, jamais désérialisés directement dans un type du domaine, conformément au §11.
+- **Hiérarchie des scopes** (`scopes.rs`) : `admin:org` accorde `read:org`, `repo` accorde
+  `public_repo` et consorts, `user` accorde `read:user`. Sans cela un utilisateur porteur de
+  `admin:org` se verrait refuser une capacité qu'il possède, c'est-à-dire exactement le bouton gris
+  muet que le §3.7 interdit.
+- **Auth PAT** (`auth.rs`) : lecture d'identité à partir de `/user` et `/user/orgs`, jamais acceptée
+  sans validation (§3.6). Détection SAML SSO par l'en-tête `X-GitHub-SSO`, qui distingue
+  `partial-results` (des organisations sont masquées, leurs identifiants sont nommés) de `required`
+  (une autorisation est à faire, l'URL est fournie). Une liste vide sans explication est donc
+  impossible.
+- **Modèle de capacités** (`capabilities.rs`) : les trois sources du §3.7 dans l'ordre — scopes
+  réellement accordés, sondage actif, apprentissage par l'échec. Aucune table figée « OAuth ne sait
+  pas faire X ». Les règles d'affichage du §3.7 sont portées par `is_discoverable` et `is_enabled` :
+  une indisponibilité structurelle sort la commande du registre, une indisponibilité récupérable la
+  laisse visible et désactivée, `Unknown` est traité comme disponible.
+- **Keychain** (`keychain.rs`) : stockage par le trousseau du système. Le jeton ne passe jamais par
+  un fichier. `Token` refuse de se rendre dans `Debug` et `Display`.
+- **Requêtes conditionnelles** : `If-None-Match` et `If-Modified-Since` émis depuis des validateurs
+  fournis par l'appelant, `ETag`, `Last-Modified` et `X-Poll-Interval` relus dans la réponse. Le
+  gouverneur ne conserve aucun cache : `quay-forge` ne connaît pas `quay-store` (§5.2) et
+  `resource_cache` appartient au §6. Aucun trait n'est introduit pour un seul implémenteur.
+- **Plafond de spéculation** : le budget `Speculative` est un second compteur glissant à 15 % du
+  budget horaire (§7.6). Un test vérifie qu'une requête `User` passe encore quand la spéculation est
+  épuisée.
+
+### Deux corrections de conception, l'une importante
+
+**Un 403 n'est pas toujours une limite de débit.** Le gouverneur réessayait tout 403 cinq fois avec
+backoff. Un 403 de permission — capacité absente, politique d'organisation, SSO non autorisé — n'est
+pas une limite de débit : le réessayer est faux, lent, et il masque la raison que le §3.7 veut
+remonter à l'interface. Le 403 n'est désormais traité comme un throttle que s'il porte `Retry-After`,
+ou si `x-ratelimit-remaining` vaut zéro, ou si le corps nomme une limite. Sinon il est rendu tel
+quel à l'appelant, qui en tire une capacité indisponible. Le test qui figeait l'ancien comportement
+a été réécrit sur la nouvelle sémantique plutôt que contourné.
+
+**Un 304 rend son jeton de budget.** Le §3.2 dit qu'un 304 authentifié ne décompte pas du quota.
+Le budget glissant de 1 500 requêtes par heure est notre propre plafond : compter les 304 dedans
+reviendrait à s'interdire le polling conditionnel qui est justement gratuit. La réservation est donc
+remboursée quand la réponse est un 304. Mesuré en M0-1, cf. ci-dessous.
+
+### Mesure M0-1 — le piège annoncé par le §3.4
+
+Le §3.4 annonce un piège bloquant : la documentation laisse entendre que `/notifications` n'accepte
+que le PAT classique. Mesuré, sur le seul type de jeton disponible.
+
+| Observation | Résultat |
+|---|---|
+| PAT classique sur `/notifications` | **200**, l'endpoint répond |
+| `X-Poll-Interval` | **60 s**, comme annoncé |
+| Validateurs proposés | `ETag` **et** `Last-Modified` |
+| 10 requêtes conditionnelles (304) | `x-ratelimit-remaining` **figé à 4968**, quota consommé **0** |
+| 10 requêtes non conditionnelles (200) | 4967 → 4958, quota consommé **1 par requête** |
+
+**Le pilier de la stratégie de polling du §3.2 est confirmé empiriquement** : dix révalidations
+consécutives coûtent zéro. Sur un tier warm à 60 s, l'inbox se rafraîchit gratuitement tant qu'elle
+ne change pas.
+
+**Découverte non prévue par la spec : l'endpoint `/rate_limit` n'est pas un instrument fiable.**
+Il n'a reflété **aucune** des vingt requêtes mesurées, aucun de ses seaux n'a bougé, alors que les
+en-têtes de réponse les comptaient une par une. Ma première version de la mesure s'appuyait sur
+`/rate_limit` et concluait, à tort, que les requêtes non conditionnelles étaient gratuites elles
+aussi. C'est l'instrument qui était faux, pas GitHub. Le §7.2 avait raison de spécifier la lecture
+des en-têtes à chaque réponse, et un test interdit désormais au gouverneur de sonder `/rate_limit`
+de lui-même. Conséquence pour l'interface : la jauge de quota du §7.2 doit se nourrir des en-têtes,
+sinon elle affichera un réservoir plein en permanence.
+
+### Blocage
+
+**M0-1 n'est mesuré qu'à moitié et je ne peux pas finir seul.** La question du §3.4 est de savoir si
+`/notifications` exclut les PAT fine-grained et les GitHub Apps. Je n'ai qu'un PAT classique, donc
+je sais seulement qu'il fonctionne. Le reste n'est pas déduit, il est absent.
+
+Il me faut, pour conclure, un **PAT fine-grained** sur un dépôt jetable, avec la permission
+`Notifications` en lecture. Une minute à créer, et cela tranche définitivement le risque n°1 du §13
+ainsi que la matrice de capacités laissée ouverte au §12.1. Deux options si tu ne veux pas en créer
+un : soit on avance en supposant le pire, à savoir PAT classique obligatoire, ce qui est déjà la
+décision arrêtée du §3.6 et ne coûte donc rien aujourd'hui ; soit on laisse la case vide et on la
+remplira au moment où le mode OAuth secondaire sera écrit, au M3. Je penche pour la première, elle
+n'engage aucune réécriture.
+
+### Écarts assumés
+
+- Le §3.7 déclare `auth_mode: AuthMode` avec deux variantes, `PatClassic | OAuth`. J'utilise
+  `TokenKind` à cinq variantes, qui ajoute le PAT fine-grained, le jeton de GitHub App et
+  l'inconnu. Le §3.4 demande précisément de détecter le cas fine-grained : une énumération à deux
+  variantes ne peut pas le représenter. Aucune capacité n'est dérivée du type de jeton, seulement
+  des scopes et des sondages, donc l'interdit du §3.7 est respecté.
+- Les trois tests du trousseau sont marqués `#[ignore]` avec la raison en toutes lettres : ils
+  touchent le magasin d'identifiants du système, absent d'une CI sans session graphique. Ils ont été
+  lancés sur cette machine et passent, avec un nom de service propre au processus et un faux jeton.
+  Le jeton réel n'a jamais été écrit dans le trousseau.
+
+### Dépendance ajoutée
+
+| Dépendance | Justification |
+|---|---|
+| `keyring` | Trousseau du système, exigé par le §5.3 : un jeton ne s'écrit jamais en clair sur disque. |
+
+### Ce qu'il faut faire ensuite
+
+1. Trancher le blocage M0-1 ci-dessus.
+2. Étape 5 : migrations versionnées par-dessus `0001_initial.sql`, et la requête d'inbox branchée
+   sur le schéma corrigé.
+3. Étape 6 : chemin de fetch complet, `PollingSource` implémentant `EventSource`, alimenté par
+   `/notifications` et son `X-Poll-Interval`, validateurs persistés dans `resource_cache`.

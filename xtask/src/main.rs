@@ -27,6 +27,7 @@ fn main() -> ExitCode {
 
     match (command, argument) {
         (Some("budgets"), _) => budgets_command(),
+        (Some("measure"), Some("m0-1")) => measure_command(Scenario::M01),
         (Some("measure"), Some("j1a")) => measure_command(Scenario::J1a),
         (Some("measure"), Some("j1b")) => measure_command(Scenario::J1b),
         (Some("measure"), Some("all")) => measure_command(Scenario::All),
@@ -36,6 +37,7 @@ fn main() -> ExitCode {
 }
 
 enum Scenario {
+    M01,
     J1a,
     J1b,
     All,
@@ -44,6 +46,7 @@ enum Scenario {
 fn usage() -> ExitCode {
     eprintln!("usage: cargo run -p xtask -- <command>");
     eprintln!("  budgets        check every performance budget of the specification");
+    eprintln!("  measure m0-1   probe which authentication the notifications endpoint accepts");
     eprintln!("  measure j1a    measure the GraphQL pull request detail breaking point");
     eprintln!("  measure j1b    measure the inbox query against the reference dataset");
     eprintln!("  measure all    run both measurements");
@@ -112,6 +115,26 @@ fn measure_command(scenario: Scenario) -> ExitCode {
             }
             Err(error) => {
                 eprintln!("J1-b failed: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    if matches!(scenario, Scenario::M01 | Scenario::All) {
+        let raw_log = format!(
+            "measurements/raw/m0-1-{}.jsonl",
+            started_at.replace(':', "")
+        );
+        match runtime.block_on(measure::m0_1::measure(&started_at)) {
+            Ok(observations) => {
+                let summary = measure::m0_1::summary(&observations, &started_at, &raw_log);
+                if let Err(error) = measure::write_scenario_summary("m0-1", summary) {
+                    eprintln!("the M0-1 summary could not be written: {error}");
+                    return ExitCode::FAILURE;
+                }
+            }
+            Err(error) => {
+                eprintln!("M0-1 failed: {error}");
                 return ExitCode::FAILURE;
             }
         }

@@ -256,6 +256,7 @@ mod tests {
             body: None,
             repo: None,
             priority: Priority::User,
+            validators: None,
         };
         assert!(matches!(
             locks.authorize(&request),

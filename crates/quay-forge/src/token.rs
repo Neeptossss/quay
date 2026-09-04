@@ -16,6 +16,14 @@ impl Token {
             .map(Self)
     }
 
+    pub fn kind(&self) -> crate::auth::TokenKind {
+        crate::auth::TokenKind::of(&self.0)
+    }
+
+    pub fn expose_for_credential_store(&self) -> &str {
+        &self.0
+    }
+
     pub fn header_value(&self) -> String {
         format!("Bearer {}", self.0)
     }

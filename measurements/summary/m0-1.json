@@ -1,0 +1,129 @@
+{
+  "machine": "aarch64-macos",
+  "measured_at": "2026-09-04T15:02:32.414153Z",
+  "raw_log": "measurements/raw/m0-1-2026-09-04T150232.414153Z.jsonl",
+  "rows": [
+    {
+      "detail": {
+        "granted_scopes": [
+          "audit_log",
+          "notifications",
+          "project",
+          "public_repo",
+          "read:org",
+          "read:user",
+          "repo",
+          "repo:invite",
+          "repo:status",
+          "repo_deployment",
+          "security_events",
+          "user",
+          "user:email",
+          "user:follow",
+          "workflow"
+        ],
+        "login_resolved": true,
+        "organization_count": 9,
+        "single_sign_on": "none",
+        "token_kind": "classic personal access token"
+      },
+      "step": "identity"
+    },
+    {
+      "detail": {
+        "bytes": 58704,
+        "capability": true,
+        "entries": 12,
+        "etag_offered": true,
+        "last_modified_offered": true,
+        "message": "",
+        "poll_interval_seconds": 60,
+        "status": 200
+      },
+      "step": "notifications_probe"
+    },
+    {
+      "detail": {
+        "bytes": 0,
+        "elapsed_ms": {
+          "max": 506.894125,
+          "mean": 418.6486957999999,
+          "min": 356.852125,
+          "p50": 418.418583,
+          "p95": 506.894125,
+          "p99": 506.894125,
+          "samples": 10
+        },
+        "quota_remaining_in_response_headers": [
+          4968,
+          4968,
+          4968,
+          4968,
+          4968,
+          4968,
+          4968,
+          4968,
+          4968,
+          4968
+        ],
+        "rate_limit_endpoint_buckets_that_moved": {},
+        "requests": 10,
+        "statuses": [
+          304,
+          304,
+          304,
+          304,
+          304,
+          304,
+          304,
+          304,
+          304,
+          304
+        ]
+      },
+      "step": "revalidated_campaign"
+    },
+    {
+      "detail": {
+        "bytes": 587040,
+        "elapsed_ms": {
+          "max": 477.39233399999995,
+          "mean": 391.5111292,
+          "min": 325.488375,
+          "p50": 387.71937499999996,
+          "p95": 477.39233399999995,
+          "p99": 477.39233399999995,
+          "samples": 10
+        },
+        "quota_remaining_in_response_headers": [
+          4967,
+          4966,
+          4965,
+          4964,
+          4963,
+          4962,
+          4961,
+          4960,
+          4959,
+          4958
+        ],
+        "rate_limit_endpoint_buckets_that_moved": {},
+        "requests": 10,
+        "statuses": [
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200
+        ]
+      },
+      "step": "plain_campaign"
+    }
+  ],
+  "scenario": "m0-1"
+}

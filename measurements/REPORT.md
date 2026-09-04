@@ -2,7 +2,7 @@
 
 Ce fichier est généré par `cargo run -p xtask -- report` à partir des logs bruts de `measurements/raw/`. Il ne se modifie pas à la main.
 
-- Généré le : 2026-09-04T14:47:25.468541Z
+- Généré le : 2026-09-04T15:03:28.175084Z
 - Machine : aarch64-macos
 
 ## Budgets du §4
@@ -20,6 +20,58 @@ Ce fichier est généré par `cargo run -p xtask -- report` à partir des logs b
 | `background_cpu_idle` (cpu at rest, window in the background) | §4 | ≤ 0.5 % | mean | process measurement | — | **MISSING** | — |
 | `github_quota_per_hour` (GitHub quota consumed in normal operation) | §4 | ≤ 1500 req/h | max | rate governor counter | — | **MISSING** | — |
 | `cache_served_navigations` (navigations served from cache in under 50 ms) | §4 | ≥ 85 % | sliding window | preload_outcome | — | **MISSING** | — |
+
+## M0-1 — authentification acceptée par l'endpoint `/notifications`
+
+- Mesuré le : 2026-09-04T15:02:32.414153Z
+- Log brut : `measurements/raw/m0-1-2026-09-04T150232.414153Z.jsonl`
+
+La mesure ne porte que sur le type de jeton réellement disponible. Les autres modes d'authentification restent non mesurés, ils ne sont pas déduits.
+
+### `identity`
+
+| Observation | Valeur |
+|---|---|
+| `granted_scopes` | `["audit_log","notifications","project","public_repo","read:org","read:user","repo","repo:invite","repo:status","repo_deployment","security_events","user","user:email","user:follow","workflow"]` |
+| `login_resolved` | `true` |
+| `organization_count` | `9` |
+| `single_sign_on` | none |
+| `token_kind` | classic personal access token |
+
+### `notifications_probe`
+
+| Observation | Valeur |
+|---|---|
+| `bytes` | `58704` |
+| `capability` | `true` |
+| `entries` | `12` |
+| `etag_offered` | `true` |
+| `last_modified_offered` | `true` |
+| `message` | — |
+| `poll_interval_seconds` | `60` |
+| `status` | `200` |
+
+### `revalidated_campaign`
+
+| Observation | Valeur |
+|---|---|
+| `bytes` | `0` |
+| `elapsed_ms` | `{"max":506.894125,"mean":418.6486957999999,"min":356.852125,"p50":418.418583,"p95":506.894125,"p99":506.894125,"samples":10}` |
+| `quota_remaining_in_response_headers` | `[4968,4968,4968,4968,4968,4968,4968,4968,4968,4968]` |
+| `rate_limit_endpoint_buckets_that_moved` | `{}` |
+| `requests` | `10` |
+| `statuses` | `[304,304,304,304,304,304,304,304,304,304]` |
+
+### `plain_campaign`
+
+| Observation | Valeur |
+|---|---|
+| `bytes` | `587040` |
+| `elapsed_ms` | `{"max":477.3923339999999,"mean":391.5111292,"min":325.488375,"p50":387.719375,"p95":477.3923339999999,"p99":477.3923339999999,"samples":10}` |
+| `quota_remaining_in_response_headers` | `[4967,4966,4965,4964,4963,4962,4961,4960,4959,4958]` |
+| `rate_limit_endpoint_buckets_that_moved` | `{}` |
+| `requests` | `10` |
+| `statuses` | `[200,200,200,200,200,200,200,200,200,200]` |
 
 ## J1-a — point de rupture de la requête GraphQL de détail de pull request
 

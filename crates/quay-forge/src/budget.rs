@@ -36,6 +36,11 @@ impl SlidingBudget {
             .saturating_sub(now.saturating_duration_since(oldest)))
     }
 
+    pub fn refund(&mut self, now: Instant) {
+        self.forget_expired(now);
+        self.issued.pop_back();
+    }
+
     pub fn used(&mut self, now: Instant) -> u32 {
         self.forget_expired(now);
         self.issued.len() as u32
@@ -95,6 +100,28 @@ mod tests {
     #[test]
     fn the_hourly_budget_of_the_specification_is_fifteen_hundred_requests() {
         assert_eq!(SlidingBudget::per_hour(1_500).limit(), 1_500);
+    }
+
+    #[test]
+    fn a_refunded_slot_becomes_available_again() {
+        let mut budget = SlidingBudget::new(1, Duration::from_secs(60));
+        let now = Instant::now();
+        assert!(budget.reserve(now).is_ok());
+        assert!(budget.reserve(now).is_err());
+        budget.refund(now);
+        assert!(budget.reserve(now).is_ok());
+    }
+
+    #[test]
+    fn refunding_an_unused_budget_does_not_go_negative() {
+        let mut budget = SlidingBudget::new(2, Duration::from_secs(60));
+        let now = Instant::now();
+        budget.refund(now);
+        budget.refund(now);
+        assert_eq!(budget.used(now), 0);
+        assert!(budget.reserve(now).is_ok());
+        assert!(budget.reserve(now).is_ok());
+        assert!(budget.reserve(now).is_err());
     }
 
     #[test]

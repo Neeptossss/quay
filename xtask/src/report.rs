@@ -20,6 +20,7 @@ pub fn generate() -> Result<PathBuf, Box<dyn Error>> {
     writeln!(page, "- Machine : {}\n", crate::machine())?;
 
     write_budgets(&mut page)?;
+    write_m0_1(&mut page)?;
     write_j1a(&mut page)?;
     write_j1b(&mut page)?;
 
@@ -73,6 +74,59 @@ fn write_budgets(page: &mut String) -> Result<(), Box<dyn Error>> {
     }
     writeln!(page)?;
     Ok(())
+}
+
+fn write_m0_1(page: &mut String) -> Result<(), Box<dyn Error>> {
+    writeln!(
+        page,
+        "## M0-1 — authentification acceptée par l'endpoint `/notifications`\n"
+    )?;
+    let Some(summary) = load("m0-1") else {
+        writeln!(
+            page,
+            "Pas encore mesuré. Lancer `cargo run -p xtask -- measure m0-1`.\n"
+        )?;
+        return Ok(());
+    };
+
+    writeln!(
+        page,
+        "- Mesuré le : {}",
+        text(&summary, "/measured_at", "inconnu")
+    )?;
+    writeln!(
+        page,
+        "- Log brut : `{}`\n",
+        text(&summary, "/raw_log", "inconnu")
+    )?;
+    writeln!(
+        page,
+        "La mesure ne porte que sur le type de jeton réellement disponible. Les autres modes \
+         d'authentification restent non mesurés, ils ne sont pas déduits.\n"
+    )?;
+
+    for row in &rows(&summary) {
+        let step = text(row, "/step", "?");
+        writeln!(page, "### `{step}`\n")?;
+        writeln!(page, "| Observation | Valeur |")?;
+        writeln!(page, "|---|---|")?;
+        if let Some(detail) = row.pointer("/detail").and_then(Value::as_object) {
+            for (name, value) in detail {
+                writeln!(page, "| `{name}` | {} |", render(value))?;
+            }
+        }
+        writeln!(page)?;
+    }
+    Ok(())
+}
+
+fn render(value: &Value) -> String {
+    match value {
+        Value::String(text) if text.is_empty() => "—".to_owned(),
+        Value::String(text) => text.clone(),
+        Value::Null => "—".to_owned(),
+        other => format!("`{other}`"),
+    }
 }
 
 fn write_j1a(page: &mut String) -> Result<(), Box<dyn Error>> {

@@ -7,11 +7,13 @@ use tokio::sync::Semaphore;
 
 use crate::backoff::Backoff;
 use crate::budget::SlidingBudget;
+use crate::conditional::{CacheValidators, header_text};
 use crate::error::ForgeError;
 use crate::locks::DevLocks;
 use crate::token::Token;
 
 const DEGRADED_QUOTA_FRACTION: f64 = 0.20;
+const SPECULATIVE_QUOTA_PERCENT: u32 = 15;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestKind {
@@ -51,6 +53,7 @@ pub struct OutboundRequest {
     pub body: Option<String>,
     pub repo: Option<String>,
     pub priority: Priority,
+    pub validators: Option<CacheValidators>,
 }
 
 impl OutboundRequest {
@@ -62,6 +65,7 @@ impl OutboundRequest {
             body: None,
             repo: None,
             priority,
+            validators: None,
         }
     }
 
@@ -77,6 +81,7 @@ impl OutboundRequest {
             body: Some(body.into()),
             repo: None,
             priority,
+            validators: None,
         }
     }
 
@@ -93,6 +98,7 @@ impl OutboundRequest {
             body: Some(body.into()),
             repo: Some(repo.into()),
             priority,
+            validators: None,
         }
     }
 
@@ -109,7 +115,13 @@ impl OutboundRequest {
             body: Some(body.into()),
             repo: Some(repo.into()),
             priority,
+            validators: None,
         }
+    }
+
+    pub fn revalidating(mut self, validators: Option<CacheValidators>) -> Self {
+        self.validators = validators;
+        self
     }
 }
 
@@ -143,6 +155,16 @@ pub struct ForgeResponse {
     pub elapsed: Duration,
     pub rate_limit: Option<RateLimitSnapshot>,
     pub points: u32,
+    pub validators: Option<CacheValidators>,
+    pub poll_interval: Option<Duration>,
+    pub single_sign_on: Option<String>,
+    pub granted_scopes: Option<String>,
+}
+
+impl ForgeResponse {
+    pub fn is_not_modified(&self) -> bool {
+        self.status == StatusCode::NOT_MODIFIED.as_u16()
+    }
 }
 
 pub struct GovernorConfig {
@@ -153,6 +175,12 @@ pub struct GovernorConfig {
     pub user_agent: String,
 }
 
+impl GovernorConfig {
+    pub fn speculative_budget(&self) -> u32 {
+        self.hourly_request_budget * SPECULATIVE_QUOTA_PERCENT / 100
+    }
+}
+
 impl Default for GovernorConfig {
     fn default() -> Self {
         Self {
@@ -160,7 +188,7 @@ impl Default for GovernorConfig {
             hourly_request_budget: 1_500,
             request_timeout: Duration::from_secs(60),
             max_attempts: 5,
-            user_agent: "quay/0.1 (measurement harness)".to_owned(),
+            user_agent: "quay/0.1".to_owned(),
         }
     }
 }
@@ -168,6 +196,7 @@ impl Default for GovernorConfig {
 struct GovernorMetrics {
     spent_points: u32,
     issued_requests: u32,
+    free_revalidations: u32,
     throttled_responses: u32,
     health: Health,
     rate_limit: Option<RateLimitSnapshot>,
@@ -179,6 +208,7 @@ pub struct RateGovernor {
     locks: DevLocks,
     permits: Semaphore,
     budget: Mutex<SlidingBudget>,
+    speculative_budget: Mutex<SlidingBudget>,
     backoff: Backoff,
     metrics: Mutex<GovernorMetrics>,
     max_attempts: u32,
@@ -201,10 +231,12 @@ impl RateGovernor {
             locks,
             permits: Semaphore::new(config.max_concurrent_requests),
             budget: Mutex::new(SlidingBudget::per_hour(config.hourly_request_budget)),
+            speculative_budget: Mutex::new(SlidingBudget::per_hour(config.speculative_budget())),
             backoff: Backoff::default(),
             metrics: Mutex::new(GovernorMetrics {
                 spent_points: 0,
                 issued_requests: 0,
+                free_revalidations: 0,
                 throttled_responses: 0,
                 health: Health::Healthy,
                 rate_limit: None,
@@ -229,13 +261,17 @@ impl RateGovernor {
         self.with_metrics(|metrics| metrics.issued_requests)
     }
 
+    pub fn free_revalidations(&self) -> u32 {
+        self.with_metrics(|metrics| metrics.free_revalidations)
+    }
+
     pub fn throttled_responses(&self) -> u32 {
         self.with_metrics(|metrics| metrics.throttled_responses)
     }
 
     pub async fn send(&self, request: OutboundRequest) -> Result<ForgeResponse, ForgeError> {
         self.locks.authorize(&request)?;
-        self.reserve_budget()?;
+        self.reserve_budget(request.priority)?;
 
         let _permit = self
             .permits
@@ -251,13 +287,7 @@ impl RateGovernor {
             attempt += 1;
             self.record(&request, &outcome);
 
-            if !is_throttled(outcome.status) || attempt >= self.max_attempts {
-                if is_throttled(outcome.status) {
-                    return Err(ForgeError::Throttled {
-                        attempts: attempt,
-                        last_status: outcome.status,
-                    });
-                }
+            if !is_throttled(&outcome) {
                 return Ok(ForgeResponse {
                     status: outcome.status,
                     bytes: outcome.body.len(),
@@ -266,6 +296,16 @@ impl RateGovernor {
                     elapsed: started.elapsed(),
                     rate_limit: outcome.rate_limit,
                     points: request.kind.points(),
+                    validators: outcome.validators,
+                    poll_interval: outcome.poll_interval,
+                    single_sign_on: outcome.single_sign_on,
+                    granted_scopes: outcome.granted_scopes,
+                });
+            }
+            if attempt >= self.max_attempts {
+                return Err(ForgeError::Throttled {
+                    attempts: attempt,
+                    last_status: outcome.status,
                 });
             }
 
@@ -274,21 +314,35 @@ impl RateGovernor {
                 .backoff
                 .delay(attempt - 1, outcome.retry_after, process_jitter());
             tokio::time::sleep(delay).await;
-            self.reserve_budget()?;
+            self.reserve_budget(request.priority)?;
         }
     }
 
-    fn reserve_budget(&self) -> Result<(), ForgeError> {
-        let mut budget = match self.budget.lock() {
-            Ok(budget) => budget,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+    fn reserve_budget(&self, priority: Priority) -> Result<(), ForgeError> {
+        if priority == Priority::Speculative {
+            let mut speculative = lock(&self.speculative_budget);
+            speculative.reserve(Instant::now()).map_err(|wait| {
+                ForgeError::SpeculationBudgetExhausted {
+                    budget: speculative.limit(),
+                    retry_in_seconds: wait.as_secs(),
+                }
+            })?;
+        }
+        let mut budget = lock(&self.budget);
         budget
             .reserve(Instant::now())
             .map_err(|wait| ForgeError::BudgetExhausted {
                 budget: budget.limit(),
                 retry_in_seconds: wait.as_secs(),
             })
+    }
+
+    fn refund_budget(&self, priority: Priority) {
+        let now = Instant::now();
+        lock(&self.budget).refund(now);
+        if priority == Priority::Speculative {
+            lock(&self.speculative_budget).refund(now);
+        }
     }
 
     async fn issue(&self, request: &OutboundRequest) -> Result<Attempt, ForgeError> {
@@ -299,6 +353,14 @@ impl RateGovernor {
             .header("X-GitHub-Api-Version", "2022-11-28");
         if let Some(token) = self.token.as_ref() {
             builder = builder.header("Authorization", token.header_value());
+        }
+        if let Some(validators) = request.validators.as_ref() {
+            if let Some(etag) = validators.etag.as_ref() {
+                builder = builder.header("If-None-Match", etag);
+            }
+            if let Some(last_modified) = validators.last_modified.as_ref() {
+                builder = builder.header("If-Modified-Since", last_modified);
+            }
         }
         if let Some(body) = request.body.as_ref() {
             builder = builder
@@ -311,8 +373,7 @@ impl RateGovernor {
         })?;
 
         let status = response.status().as_u16();
-        let rate_limit = read_rate_limit(response.headers());
-        let retry_after = read_retry_after(response.headers());
+        let headers = response.headers().clone();
         let body = response.text().await.map_err(|error| {
             ForgeError::Transport(self.redact(&strip_credentials(&error.to_string())))
         })?;
@@ -320,16 +381,27 @@ impl RateGovernor {
         Ok(Attempt {
             status,
             body,
-            rate_limit,
-            retry_after,
+            rate_limit: read_rate_limit(&headers),
+            retry_after: read_retry_after(&headers),
+            validators: CacheValidators::from_headers(&headers),
+            poll_interval: header_text(&headers, "x-poll-interval")
+                .and_then(|value| value.trim().parse::<u64>().ok())
+                .map(Duration::from_secs),
+            single_sign_on: header_text(&headers, "x-github-sso"),
+            granted_scopes: header_text(&headers, "x-oauth-scopes"),
         })
     }
 
     fn record(&self, request: &OutboundRequest, outcome: &Attempt) {
-        let counted_against_quota = outcome.status != StatusCode::NOT_MODIFIED.as_u16();
+        let revalidated_for_free = outcome.status == StatusCode::NOT_MODIFIED.as_u16();
+        if revalidated_for_free {
+            self.refund_budget(request.priority);
+        }
         self.with_metrics_mut(|metrics| {
             metrics.issued_requests += 1;
-            if counted_against_quota {
+            if revalidated_for_free {
+                metrics.free_revalidations += 1;
+            } else {
                 metrics.spent_points += request.kind.points();
             }
             if let Some(snapshot) = outcome.rate_limit {
@@ -366,17 +438,18 @@ impl RateGovernor {
     }
 
     fn with_metrics<T>(&self, read: impl FnOnce(&GovernorMetrics) -> T) -> T {
-        match self.metrics.lock() {
-            Ok(metrics) => read(&metrics),
-            Err(poisoned) => read(&poisoned.into_inner()),
-        }
+        read(&lock(&self.metrics))
     }
 
     fn with_metrics_mut(&self, write: impl FnOnce(&mut GovernorMetrics)) {
-        match self.metrics.lock() {
-            Ok(mut metrics) => write(&mut metrics),
-            Err(poisoned) => write(&mut poisoned.into_inner()),
-        }
+        write(&mut lock(&self.metrics));
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
     }
 }
 
@@ -385,10 +458,30 @@ struct Attempt {
     body: String,
     rate_limit: Option<RateLimitSnapshot>,
     retry_after: Option<Duration>,
+    validators: Option<CacheValidators>,
+    poll_interval: Option<Duration>,
+    single_sign_on: Option<String>,
+    granted_scopes: Option<String>,
 }
 
-fn is_throttled(status: u16) -> bool {
-    status == 403 || status == 429
+fn is_throttled(outcome: &Attempt) -> bool {
+    if outcome.status == 429 {
+        return true;
+    }
+    if outcome.status != 403 {
+        return false;
+    }
+    if outcome.retry_after.is_some() {
+        return true;
+    }
+    if outcome
+        .rate_limit
+        .is_some_and(|snapshot| snapshot.remaining == 0)
+    {
+        return true;
+    }
+    let lowered = outcome.body.to_lowercase();
+    lowered.contains("rate limit") || lowered.contains("abuse detection")
 }
 
 fn strip_credentials(text: &str) -> String {
@@ -405,10 +498,7 @@ fn strip_credentials(text: &str) -> String {
 }
 
 fn header_number(headers: &reqwest::header::HeaderMap, name: &str) -> Option<u64> {
-    headers
-        .get(name)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.trim().parse::<u64>().ok())
+    header_text(headers, name).and_then(|value| value.trim().parse::<u64>().ok())
 }
 
 fn read_rate_limit(headers: &reqwest::header::HeaderMap) -> Option<RateLimitSnapshot> {
