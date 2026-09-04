@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
+  import Kbd from "./Kbd.svelte";
   import type { SyncState, ViewEntry } from "./ipc";
   import { t } from "./i18n";
   import { syncIcon } from "./state";
@@ -39,7 +40,7 @@
       >
         <Icon name="layout-list" size={13} />
         <span class="truncate">{t(view.name)}</span>
-        {#if view.shortcut}<kbd>{view.shortcut}</kbd>{/if}
+        {#if view.shortcut}<Kbd chord={view.shortcut} />{:else}<span></span>{/if}
       </button>
     {/each}
   </nav>

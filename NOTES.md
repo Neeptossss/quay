@@ -1425,3 +1425,34 @@ visible plutôt que d'être remplacé par du vide.
   soi-même le déplacement de la fenêtre et l'encart des feux tricolores.
 - `keystroke_to_pixel` reste `MISSING` : l'instrument est branché et affiché dans le pied de la barre
   latérale, mais personne n'a encore tapé dans la fenêtre.
+
+---
+
+## Session 2026-09-04 (suite) — composant de raccourci
+
+Un composant de pastille de touche, dans nos jetons : bordure filaire, bordure basse doublée pour
+donner le relief d'une touche, chasse fixe, chiffres tabulaires, et la bordure qui prend l'accent
+quand la ligne est active. Une séquence rend autant de pastilles que de touches, avec un intervalle
+plutôt qu'un séparateur, parce qu'une séquence à la vim se lit comme deux frappes et non comme une
+combinaison.
+
+### Ce que le composant a failli casser
+
+J'avais mis les lettres en capitale, « comme le système les affiche ». C'est faux ici : le §8.2 lie
+**`j` et `J` à deux commandes différentes**, ligne suivante et ligne suivante avec ouverture. Les
+afficher toutes deux « J » rendait le raccourci indistinguable de son voisin. La casse est donc
+préservée telle qu'elle se tape, et un test l'exige explicitement :
+`garde la casse, parce que deux casses sont deux commandes`.
+
+Les touches sans caractère sont rendues par leur symbole — `↵`, `⇥`, `⌫`, `␣` — sauf `esc` qui reste
+en toutes lettres, comme sur le clavier. Une touche inconnue est rendue telle quelle plutôt que
+transformée.
+
+### Un `@html` supprimé au passage
+
+L'écran vide interpolait des balises dans une chaîne traduite. Cela obligeait le catalogue à porter
+du balisage, et faisait passer une traduction par `@html`. Un découpage pur, `segments`, transforme
+`« {palette} ouvre la palette »` en une suite de morceaux de texte et de touches, que le rendu
+compose. Le catalogue ne contient plus que du texte, aucune traduction ne traverse `@html`, et un
+marqueur qu'on ne fournit pas reste visible plutôt que de laisser un trou. Plus aucun `@html` dans le
+frontend.

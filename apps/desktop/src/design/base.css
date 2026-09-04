@@ -31,15 +31,41 @@ button {
   cursor: default;
 }
 
-kbd {
-  font-family: var(--font-mono);
-  font-size: var(--text-caps);
-  color: var(--ink-faint);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-sharp);
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+
+.kbd kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
   padding: 0 4px;
-  line-height: 15px;
-  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--ink-faint);
+  background: var(--raised);
+  border: 1px solid var(--hairline-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sharp);
+  font-variant-numeric: tabular-nums;
+}
+
+.kbd.tone-strong kbd {
+  color: var(--ink-muted);
+  background: var(--canvas);
+}
+
+.sidebar .item[aria-current="true"] .kbd kbd,
+.palette li[aria-selected="true"] .kbd kbd {
+  color: var(--ink-muted);
+  border-color: var(--accent);
 }
 
 .icon {

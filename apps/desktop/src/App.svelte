@@ -1,6 +1,7 @@
 <script lang="ts">
   import Detail from "./Detail.svelte";
   import Icon from "./Icon.svelte";
+  import Kbd from "./Kbd.svelte";
   import Palette from "./Palette.svelte";
   import Row from "./Row.svelte";
   import Sidebar from "./Sidebar.svelte";
@@ -10,6 +11,7 @@
   import { observePaint } from "./paint";
   import { scrollToKeep, windowOf } from "./virtual";
   import { t } from "./i18n";
+  import { segments } from "./keycaps";
   import * as ipc from "./ipc";
   import type {
     CommandEntry,
@@ -280,7 +282,11 @@
     {:else if entries.length === 0}
       <div class="empty">
         <h2>{t("empty.title")}</h2>
-        <p>{@html t("empty.hint", { palette: "<kbd>⌘K</kbd>", inbox: "<kbd>g i</kbd>" })}</p>
+        <p>
+          {#each segments(t("empty.hint"), { palette: "⌘k", inbox: "g i" }) as part, index (index)}
+            {#if part.kind === "key"}<Kbd chord={part.value} tone="strong" />{:else}{part.value}{/if}
+          {/each}
+        </p>
       </div>
     {:else}
       <div

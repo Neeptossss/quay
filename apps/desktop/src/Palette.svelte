@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
+  import Kbd from "./Kbd.svelte";
   import type { CommandEntry } from "./ipc";
   import { t } from "./i18n";
 
@@ -37,7 +38,7 @@
         <li role="option" aria-selected={index === selected} class={entry.enabled ? "" : "disabled"}>
           <Icon name={entry.icon} size={13} />
           <span class="truncate">{t(entry.titleKey)}</span>
-          <kbd>{entry.bindings[0] ?? ""}</kbd>
+          {#if entry.bindings[0]}<Kbd chord={entry.bindings[0]} />{:else}<span></span>{/if}
         </li>
       {/each}
       {#if entries.length === 0}
