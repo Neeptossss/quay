@@ -1,5 +1,6 @@
 use quay_core::Tier;
 use quay_store::inbox::{InboxFilter, InboxQuery};
+use quay_store::migrations::{MIGRATIONS, latest_version};
 use quay_store::{CacheEntry, Store, StoreError};
 
 fn store() -> (tempfile::TempDir, Store) {
@@ -35,7 +36,7 @@ fn remember(store: &Store, entry: &CacheEntry) {
 fn opening_a_new_database_brings_it_to_the_latest_schema_version() {
     let (_directory, store) = store();
     match store.schema_version() {
-        Ok(version) => assert_eq!(version, 3),
+        Ok(version) => assert_eq!(version, latest_version(&MIGRATIONS)),
         Err(error) => panic!("the version must be readable: {error}"),
     }
 }
@@ -51,7 +52,9 @@ fn reopening_a_database_does_not_replay_the_migrations() {
         panic!("the first open must succeed: {error}");
     }
     match Store::open(&path) {
-        Ok(store) => assert!(matches!(store.schema_version(), Ok(3))),
+        Ok(store) => assert!(
+            matches!(store.schema_version(), Ok(version) if version == latest_version(&MIGRATIONS))
+        ),
         Err(error) => panic!("the second open must succeed: {error}"),
     }
 }
@@ -78,7 +81,7 @@ fn a_database_stamped_by_a_newer_build_is_refused_rather_than_opened() {
     match Store::open(&path) {
         Err(StoreError::DatabaseFromTheFuture { found, supported }) => {
             assert_eq!(found, 42);
-            assert_eq!(supported, 3);
+            assert_eq!(supported, latest_version(&MIGRATIONS));
         }
         Err(error) => panic!("a future database must name the version gap, got {error}"),
         Ok(_) => panic!("a future database must be refused, not opened"),

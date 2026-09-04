@@ -1568,3 +1568,89 @@ plafonnement à vingt organisations.
 - Les dépôts et les favoris ne sont pas faits, c'est la suite annoncée.
 - Le décompte affiché est celui des pull requests ouvertes connues **localement**, donc il dépend de
   ce qui a été synchronisé. Ce n'est pas le décompte de la forge.
+
+---
+
+## Session — l'écran d'une pull request et son fil
+
+L'élément suivant de l'ordre donné : « l'écran d'une PR, avec le feed ». Le diff reste pour la fin.
+
+### Ce qui manquait
+
+L'écran de détail ne savait afficher que les fils de review. Il ne disait pas qui avait poussé quoi,
+qui avait approuvé, quand la branche avait été réécrite. Or c'est exactement ce qu'on cherche en
+ouvrant une pull request qu'on n'a pas suivie.
+
+### Ce qui a été ajouté
+
+**`TimelineKind` dans `quay-core`**, neuf natures d'événement, chacune avec un identifiant stable
+stocké en base : `commit`, `comment`, `review`, `review_requested`, `ready_for_review`,
+`force_push`, `merged`, `closed`, `reopened`. Le choix de ces neuf-là n'est pas neutre : les
+étiquettes et les renommages sont du bruit pour un client de revue, ils ne sont pas demandés à la
+forge. Trois tests couvrent l'aller-retour de l'identifiant, le refus d'une nature inconnue, et
+l'unicité des identifiants.
+
+**La requête GraphQL de détail** demande maintenant `timelineItems(last: 60, itemTypes: [...])`.
+Deux précautions :
+
+- le bloc porte `@include(if: $head)`, donc il n'est **pas** demandé sur les pages suivantes de la
+  pagination des fils. Une pull request à trois pages de fils ne paie la timeline qu'une fois.
+- la boucle de fetch ne lit la timeline que sur le premier passage, même si la réponse la contient.
+  La directive suffit face à la vraie forge ; le garde-fou couvre le cas où elle ne suffirait pas.
+  Un test monte un serveur qui renvoie la timeline sur **chaque** page et vérifie qu'elle n'est
+  comptée qu'une fois.
+
+**Migration 0004**, table `timeline_event`, écrite dans la même transaction que le reste du
+snapshot. Les tests de migration ne codaient pas en dur le numéro de version : ils l'attendaient
+égal à `3`. Ils appellent maintenant `latest_version(&MIGRATIONS)`, donc la prochaine migration ne
+les fera plus rougir pour rien.
+
+**Le fil est calculé, pas stocké.** `PullRequestView::feed()` entrelace les événements et les fils
+de review, chaque fil placé à l'instant de son premier commentaire. C'est une fonction pure, testée
+sur sept cas.
+
+Deux règles de produit y sont écrites :
+
+- une review dont le corps est vide **et** dont l'état est `commented` est le conteneur des
+  commentaires en ligne : elle n'apparaît pas, sinon chaque fil serait annoncé deux fois. Une
+  approbation sans un mot, elle, reste : elle porte une information.
+- une review encore `PENDING` est un brouillon que seul son auteur voit ; elle n'entre jamais dans
+  le fil.
+
+### Ce que la vraie forge a appris
+
+Le fil réel a montré deux défauts que les tests ne voyaient pas.
+
+`copilot-pull-request-reviewer` est un **Bot**, ni `User` ni `Team`. La demande de revue arrivait
+donc sans destinataire, et la ligne s'affichait « a demandé une revue à {target} », placeholder
+compris. Deux corrections : le catalogue a une clef séparée `feed.review_requested.anyone` pour ce
+cas, et `Catalogue::render` interpole côté Rust comme `t()` le fait côté Svelte. Le choix de la clef
+est une seule fonction, `i18n::feed_key`, utilisée par la CLI et par le test qui vérifie que chaque
+nature d'événement est traduite dans chaque langue.
+
+### Navigation
+
+`n` et `p` (§8.2, « thread non résolu suivant / précédent ») ne sont plus muettes. Elles bouclent,
+et le fil visé est celui que `R` résout — avant, `R` résolvait le premier fil non résolu quelle que
+soit la position, ce qui est faux dès qu'il y en a deux.
+
+### Vérification
+
+394 tests Rust, 86 tests frontend, clippy sans diagnostic, `svelte-check` propre, `cargo fmt` propre.
+
+Sur la base réelle, après vidage du cache de fraîcheur et resynchronisation des 43 pull requests :
+**339 événements de timeline** stockés, couvrant huit des neuf natures (`reopened` n'apparaît pas
+dans ce jeu de données). La resynchronisation a coûté 48 requêtes et 48 points d'après la
+comptabilité du governor. Ce chiffre vient d'une exécution manuelle de `quay sync`, pas d'un
+harnais scripté : il n'entre donc pas dans `measurements/REPORT.md`.
+
+`quay show Groupe-RHF/Parts-Scrapper#29` rend le fil complet : les commits dans l'ordre, la demande
+de revue, la revue du bot, et le fil ouvert de Daumas-hugo à sa place chronologique.
+
+### Réserve
+
+L'écran lui-même n'est pas vérifié à l'œil. `osascript` n'a pas le droit d'envoyer des frappes
+depuis cette session (« osascript is not allowed to send keystrokes »), et il faut appuyer sur `o`
+sur une ligne pour ouvrir une pull request. Le rendu est donc couvert par les tests de montage —
+l'ordre du fil, l'en-tête `base ← sha`, le fil visé, la résolution du bon fil — mais pas par une
+capture. La fenêtre est laissée ouverte pour que ce soit vérifiable d'une touche.

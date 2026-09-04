@@ -82,12 +82,68 @@ pub struct ReviewRequest {
     pub requested_at: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimelineKind {
+    Commit,
+    Comment,
+    Review,
+    ReviewRequested,
+    ReadyForReview,
+    ForcePush,
+    Merged,
+    Closed,
+    Reopened,
+}
+
+impl TimelineKind {
+    pub fn id(self) -> &'static str {
+        match self {
+            TimelineKind::Commit => "commit",
+            TimelineKind::Comment => "comment",
+            TimelineKind::Review => "review",
+            TimelineKind::ReviewRequested => "review_requested",
+            TimelineKind::ReadyForReview => "ready_for_review",
+            TimelineKind::ForcePush => "force_push",
+            TimelineKind::Merged => "merged",
+            TimelineKind::Closed => "closed",
+            TimelineKind::Reopened => "reopened",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.id() == value)
+    }
+
+    pub const ALL: [TimelineKind; 9] = [
+        TimelineKind::Commit,
+        TimelineKind::Comment,
+        TimelineKind::Review,
+        TimelineKind::ReviewRequested,
+        TimelineKind::ReadyForReview,
+        TimelineKind::ForcePush,
+        TimelineKind::Merged,
+        TimelineKind::Closed,
+        TimelineKind::Reopened,
+    ];
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimelineEvent {
+    pub node_id: String,
+    pub kind: TimelineKind,
+    pub actor: String,
+    pub body: Option<String>,
+    pub reference: Option<String>,
+    pub created_at: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PullRequestSnapshot {
     pub repository: Repository,
     pub pull_request: PullRequest,
     pub threads: Vec<ReviewThread>,
     pub review_requests: Vec<ReviewRequest>,
+    pub events: Vec<TimelineEvent>,
     pub raw: Vec<u8>,
 }
 
@@ -102,7 +158,7 @@ impl PullRequestSnapshot {
 
 #[cfg(test)]
 mod tests {
-    use super::{PullRequestState, Repository};
+    use super::{PullRequestState, Repository, TimelineKind};
 
     #[test]
     fn every_pull_request_state_survives_a_round_trip_through_its_stored_identifier() {
@@ -127,6 +183,28 @@ mod tests {
     fn an_unknown_state_is_refused_rather_than_defaulted_to_open() {
         assert_eq!(PullRequestState::parse("draft"), None);
         assert_eq!(PullRequestState::parse(""), None);
+    }
+
+    #[test]
+    fn every_timeline_kind_survives_a_round_trip_through_its_stored_identifier() {
+        for kind in TimelineKind::ALL {
+            assert_eq!(TimelineKind::parse(kind.id()), Some(kind));
+        }
+    }
+
+    #[test]
+    fn a_timeline_kind_the_forge_invents_later_is_refused_rather_than_folded_into_a_comment() {
+        assert_eq!(TimelineKind::parse("labeled"), None);
+        assert_eq!(TimelineKind::parse(""), None);
+    }
+
+    #[test]
+    fn no_two_timeline_kinds_share_a_stored_identifier() {
+        let mut identifiers: Vec<&str> = TimelineKind::ALL.iter().map(|kind| kind.id()).collect();
+        identifiers.sort_unstable();
+        let count = identifiers.len();
+        identifiers.dedup();
+        assert_eq!(identifiers.len(), count);
     }
 
     #[test]

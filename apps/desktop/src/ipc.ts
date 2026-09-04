@@ -41,18 +41,40 @@ export interface ViewEntry {
   position: number;
 }
 
+export interface CommentEntry {
+  author: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface ThreadEntry {
+  item: "thread";
   nodeId: string;
   path: string;
   line: number | null;
   isResolved: boolean;
   isOutdated: boolean;
-  comments: { author: string; body: string; createdAt: string }[];
+  at: string;
+  comments: CommentEntry[];
 }
+
+export interface EventEntry {
+  item: "event";
+  nodeId: string;
+  kind: string;
+  actor: string;
+  body: string | null;
+  reference: string | null;
+  at: string;
+}
+
+export type FeedEntry = EventEntry | ThreadEntry;
 
 export interface PullRequestEntry extends InboxEntry {
   state: string;
-  threads: ThreadEntry[];
+  baseRef: string;
+  headSha: string;
+  feed: FeedEntry[];
 }
 
 export const keyMap = (scope: Scope) => invoke<KeyBinding[]>("key_map", { scope });

@@ -70,6 +70,10 @@ async function render() {
       "view.to_review": "À relire",
       "status.entries": "{count} entrée(s)",
       "confirm.retype": "Retaper {key} pour confirmer : {action}",
+      "feed.commit": "a poussé",
+      "feed.merged": "a fusionné",
+      "feed.review.approved": "a approuvé",
+      "action.needs_thread": "Aucun fil non résolu ici",
     },
     "fr",
   );
@@ -194,5 +198,164 @@ describe("action publique", () => {
     await press("j");
     expect(invoke).not.toHaveBeenCalledWith("merge", expect.anything());
     expect(body.querySelector(".notice.confirm")).toBeNull();
+  });
+});
+
+describe("écran d'une pull request", () => {
+  beforeEach(() => {
+    invoke.mockReset();
+  });
+
+  const commit = {
+    item: "event",
+    nodeId: "PRC_1",
+    kind: "commit",
+    actor: "avery",
+    body: "Déplacer le budget de retry",
+    reference: "aaaaaaa",
+    at: "2026-09-04T08:00:00Z",
+  };
+
+  const openThread = (nodeId: string, at: string) => ({
+    item: "thread",
+    nodeId,
+    path: "src/transport.rs",
+    line: 42,
+    isResolved: false,
+    isOutdated: false,
+    at,
+    comments: [{ author: "avery", body: "il manque un test", createdAt: at }],
+  });
+
+  const merged = {
+    item: "event",
+    nodeId: "ME_1",
+    kind: "merged",
+    actor: "avery",
+    body: null,
+    reference: "cafebab",
+    at: "2026-09-04T11:00:00Z",
+  };
+
+  function opened(feed: unknown[]) {
+    return {
+      ...entry,
+      state: "open",
+      baseRef: "main",
+      headSha: "deadbeefcafe",
+      feed,
+    };
+  }
+
+  const navigation = [
+    { chord: "o", command: "list.open", titleKey: "command.list.open", icon: "eye", enabled: true },
+    {
+      chord: "n",
+      command: "pr.next_unresolved",
+      titleKey: "command.pr.next_unresolved",
+      icon: "chevron-down",
+      enabled: true,
+    },
+    {
+      chord: "p",
+      command: "pr.previous_unresolved",
+      titleKey: "command.pr.previous_unresolved",
+      icon: "chevron-up",
+      enabled: true,
+    },
+    {
+      chord: "R",
+      command: "pr.resolve",
+      titleKey: "command.pr.resolve",
+      icon: "circle-check",
+      enabled: true,
+    },
+  ];
+
+  async function press(key: string) {
+    const { flushSync } = await import("svelte");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    flushSync();
+  }
+
+  it("rend le flux dans l'ordre où les choses se sont produites", async () => {
+    answer({
+      key_map: navigation,
+      pull_request: opened([commit, openThread("RT_1", "2026-09-04T09:00:00Z"), merged]),
+    });
+    const body = await render();
+    await press("o");
+    const painted = [...body.querySelectorAll(".feed .entry")].map((node) =>
+      (node.textContent ?? "").trim(),
+    );
+    expect(painted.length).toBe(3);
+    expect(painted[0]).toContain("a poussé");
+    expect(painted[1]).toContain("src/transport.rs:42");
+    expect(painted[2]).toContain("a fusionné");
+  });
+
+  it("montre la branche de base et le sha court dans l'en-tête", async () => {
+    answer({ key_map: navigation, pull_request: opened([commit]) });
+    const body = await render();
+    await press("o");
+    expect(body.textContent).toContain("main ← deadbee");
+  });
+
+  it("vise le premier fil non résolu puis boucle", async () => {
+    answer({
+      key_map: navigation,
+      pull_request: opened([
+        openThread("RT_1", "2026-09-04T09:00:00Z"),
+        openThread("RT_2", "2026-09-04T10:00:00Z"),
+      ]),
+    });
+    const body = await render();
+    await press("o");
+    await press("n");
+    expect(body.querySelector(".entry.thread.focused")?.id).toBe("thread-RT_1");
+    await press("n");
+    expect(body.querySelector(".entry.thread.focused")?.id).toBe("thread-RT_2");
+    await press("n");
+    expect(body.querySelector(".entry.thread.focused")?.id).toBe("thread-RT_1");
+  });
+
+  it("remonte au dernier fil quand on recule depuis le premier", async () => {
+    answer({
+      key_map: navigation,
+      pull_request: opened([
+        openThread("RT_1", "2026-09-04T09:00:00Z"),
+        openThread("RT_2", "2026-09-04T10:00:00Z"),
+      ]),
+    });
+    const body = await render();
+    await press("o");
+    await press("p");
+    expect(body.querySelector(".entry.thread.focused")?.id).toBe("thread-RT_2");
+  });
+
+  it("résout le fil visé et non le premier venu", async () => {
+    answer({
+      key_map: navigation,
+      pull_request: opened([
+        openThread("RT_1", "2026-09-04T09:00:00Z"),
+        openThread("RT_2", "2026-09-04T10:00:00Z"),
+      ]),
+      resolve_thread: 1,
+    });
+    await render();
+    await press("o");
+    await press("n");
+    await press("n");
+    await press("R");
+    expect(invoke).toHaveBeenCalledWith("resolve_thread", { nodeId: "RT_2" });
+  });
+
+  it("dit qu'il n'y a rien à viser plutôt que de rester muet", async () => {
+    answer({ key_map: navigation, pull_request: opened([commit]) });
+    const body = await render();
+    await press("o");
+    await press("n");
+    expect(body.textContent).toContain("Aucun fil non résolu ici");
   });
 });

@@ -35,6 +35,14 @@ impl Catalogue {
         self.entries.get(key).map(String::as_str).unwrap_or(key)
     }
 
+    pub fn render(&self, key: &str, values: &[(&str, &str)]) -> String {
+        let mut rendered = self.get(key).to_owned();
+        for (name, value) in values {
+            rendered = rendered.replace(&format!("{{{name}}}"), value);
+        }
+        rendered
+    }
+
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.entries.keys()
     }
@@ -55,6 +63,21 @@ pub fn preferred_locale() -> String {
                 .filter(|locale| LOCALES.contains(&locale.as_str()))
         })
         .unwrap_or_else(|| FALLBACK.to_owned())
+}
+
+pub const REVIEW_VERDICTS: [&str; 4] = ["approved", "changes_requested", "commented", "dismissed"];
+
+pub fn feed_key(kind: quay_core::TimelineKind, reference: Option<&str>) -> String {
+    if kind == quay_core::TimelineKind::ReviewRequested && reference.is_none() {
+        return "feed.review_requested.anyone".to_owned();
+    }
+    if kind != quay_core::TimelineKind::Review {
+        return format!("feed.{}", kind.id());
+    }
+    let verdict = reference
+        .filter(|state| REVIEW_VERDICTS.contains(state))
+        .unwrap_or("commented");
+    format!("feed.review.{verdict}")
 }
 
 #[cfg(test)]
@@ -120,6 +143,61 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn every_timeline_kind_names_itself_in_every_locale() {
+        for locale in LOCALES {
+            let catalogue = Catalogue::for_locale(locale);
+            for kind in quay_core::TimelineKind::ALL {
+                for key in feed_keys_of(kind) {
+                    assert_ne!(catalogue.get(&key), key, "{locale} misses {key}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_review_state_the_forge_invents_later_still_names_itself() {
+        assert_eq!(
+            super::feed_key(quay_core::TimelineKind::Review, Some("ESCALATED")),
+            "feed.review.commented"
+        );
+        assert_eq!(
+            super::feed_key(quay_core::TimelineKind::Review, None),
+            "feed.review.commented"
+        );
+    }
+
+    fn feed_keys_of(kind: quay_core::TimelineKind) -> Vec<String> {
+        if kind == quay_core::TimelineKind::Review {
+            return super::REVIEW_VERDICTS
+                .iter()
+                .map(|verdict| super::feed_key(kind, Some(verdict)))
+                .collect();
+        }
+        let mut keys = vec![
+            super::feed_key(kind, None),
+            super::feed_key(kind, Some("avery")),
+        ];
+        keys.dedup();
+        keys
+    }
+
+    #[test]
+    fn a_review_asked_of_someone_this_build_cannot_name_still_reads_as_a_sentence() {
+        let catalogue = Catalogue::for_locale("fr");
+        let asked = super::feed_key(quay_core::TimelineKind::ReviewRequested, None);
+        assert!(!catalogue.get(&asked).contains('{'));
+    }
+
+    #[test]
+    fn a_placeholder_without_a_value_is_left_alone_rather_than_emptied() {
+        let catalogue = Catalogue::for_locale("fr");
+        let rendered = catalogue.render("feed.review_requested", &[]);
+        assert!(rendered.contains("{target}"));
+        let filled = catalogue.render("feed.review_requested", &[("target", "avery")]);
+        assert!(filled.contains("avery"));
     }
 
     #[test]

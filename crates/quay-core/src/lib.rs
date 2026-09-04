@@ -22,7 +22,7 @@ pub use query::{
 };
 pub use records::{
     PullRequest, PullRequestSnapshot, PullRequestState, Repository, ReviewComment, ReviewRequest,
-    ReviewThread,
+    ReviewThread, TimelineEvent, TimelineKind,
 };
 pub use source::EventSource;
 pub use tier::Tier;

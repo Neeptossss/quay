@@ -22,7 +22,6 @@ export class Confirmation {
     this.awaiting = null;
   }
 
-  /** Returns true when the command may run now. */
   accept(command: string): boolean {
     if (!needsConfirmation(command)) {
       this.awaiting = null;

@@ -40,7 +40,45 @@ fn thread(identifier: &str, resolved: bool) -> serde_json::Value {
     })
 }
 
+fn commit_item(oid: &str, at: &str) -> serde_json::Value {
+    json!({
+        "__typename": "PullRequestCommit",
+        "id": format!("PRC_{oid}"),
+        "commit": {
+            "oid": format!("{oid}0123456789"),
+            "messageHeadline": "Move the retry budget behind the governor",
+            "committedDate": at,
+            "author": { "name": "Avery", "user": { "login": "avery" } }
+        }
+    })
+}
+
+fn review_item(state: &str, body: &str, at: &str) -> serde_json::Value {
+    json!({
+        "__typename": "PullRequestReview",
+        "id": format!("PRR_{state}_{at}"),
+        "body": body,
+        "state": state,
+        "createdAt": at,
+        "author": { "login": VIEWER }
+    })
+}
+
 fn detail(threads: Vec<serde_json::Value>, has_next_page: bool, cursor: &str) -> serde_json::Value {
+    detail_with_timeline(
+        threads,
+        vec![commit_item("aaaaaaa", "2026-09-04T08:00:00Z")],
+        has_next_page,
+        cursor,
+    )
+}
+
+fn detail_with_timeline(
+    threads: Vec<serde_json::Value>,
+    timeline: Vec<serde_json::Value>,
+    has_next_page: bool,
+    cursor: &str,
+) -> serde_json::Value {
     json!({
         "data": { "repository": {
             "id": "R_1",
@@ -66,6 +104,7 @@ fn detail(threads: Vec<serde_json::Value>, has_next_page: bool, cursor: &str) ->
                 "commits": { "nodes": [
                     { "commit": { "statusCheckRollup": { "state": "SUCCESS" } } }
                 ]},
+                "timelineItems": { "nodes": timeline },
                 "reviewThreads": {
                     "totalCount": 3,
                     "pageInfo": { "hasNextPage": has_next_page, "endCursor": cursor },
@@ -451,4 +490,227 @@ async fn a_signal_confirming_the_local_copy_extends_its_freshness_so_nothing_ref
         preloaded.fetched, 0,
         "a copy just confirmed current is never preloaded again"
     );
+}
+
+#[tokio::test]
+async fn the_feed_of_a_pull_request_interleaves_its_threads_with_its_timeline() {
+    let server = MockServer::start().await;
+    mount_notifications(
+        &server,
+        ResponseTemplate::new(200).set_body_json(json!([notification(
+            "PullRequest",
+            "https://api.github.com/repos/acme/api/pulls/1234"
+        )])),
+    )
+    .await;
+    mount_graphql(
+        &server,
+        ResponseTemplate::new(200).set_body_json(detail_with_timeline(
+            vec![thread("RT_1", false)],
+            vec![
+                commit_item("aaaaaaa", "2026-09-04T08:00:00Z"),
+                review_item(
+                    "CHANGES_REQUESTED",
+                    "please split this",
+                    "2026-09-04T09:30:00Z",
+                ),
+                json!({
+                    "__typename": "MergedEvent",
+                    "id": "ME_1",
+                    "createdAt": "2026-09-04T10:00:00Z",
+                    "actor": { "login": "avery" },
+                    "commit": { "oid": "cafebabe0123456789" }
+                }),
+            ],
+            false,
+            "",
+        )),
+    )
+    .await;
+
+    let (_directory, mut engine) = engine(&server);
+    match engine.tick().await {
+        Ok(report) => assert_eq!(report.stored, 1),
+        Err(error) => panic!("the tick must succeed: {error}"),
+    }
+
+    match engine.store().pull_request_view("acme", "api", 1234) {
+        Ok(Some(view)) => {
+            let feed: Vec<String> = view
+                .feed()
+                .into_iter()
+                .map(|item| match item {
+                    quay_store::detail::FeedItem::Event(event) => {
+                        format!("{}:{}", event.kind.id(), event.created_at)
+                    }
+                    quay_store::detail::FeedItem::Thread(thread) => {
+                        format!("thread:{}", thread.opened_at)
+                    }
+                })
+                .collect();
+            assert_eq!(
+                feed,
+                vec![
+                    "commit:2026-09-04T08:00:00Z",
+                    "thread:2026-09-04T09:00:00Z",
+                    "review:2026-09-04T09:30:00Z",
+                    "merged:2026-09-04T10:00:00Z",
+                ]
+            );
+            assert_eq!(view.base_ref, "main");
+        }
+        Ok(None) => panic!("the pull request must be readable"),
+        Err(error) => panic!("the detail must be readable: {error}"),
+    }
+}
+
+#[tokio::test]
+async fn a_commit_names_the_author_and_its_abbreviated_object_identifier() {
+    let server = MockServer::start().await;
+    mount_notifications(
+        &server,
+        ResponseTemplate::new(200).set_body_json(json!([notification(
+            "PullRequest",
+            "https://api.github.com/repos/acme/api/pulls/1234"
+        )])),
+    )
+    .await;
+    mount_graphql(
+        &server,
+        ResponseTemplate::new(200).set_body_json(detail(vec![], false, "")),
+    )
+    .await;
+
+    let (_directory, mut engine) = engine(&server);
+    if let Err(error) = engine.tick().await {
+        panic!("the tick must succeed: {error}");
+    }
+
+    match engine.store().pull_request_view("acme", "api", 1234) {
+        Ok(Some(view)) => {
+            assert_eq!(view.events.len(), 1);
+            assert_eq!(view.events[0].actor, "avery");
+            assert_eq!(view.events[0].reference.as_deref(), Some("aaaaaaa"));
+        }
+        Ok(None) => panic!("the pull request must be readable"),
+        Err(error) => panic!("the detail must be readable: {error}"),
+    }
+}
+
+#[tokio::test]
+async fn a_timeline_item_this_build_does_not_know_is_skipped_rather_than_failing_the_fetch() {
+    let server = MockServer::start().await;
+    mount_notifications(
+        &server,
+        ResponseTemplate::new(200).set_body_json(json!([notification(
+            "PullRequest",
+            "https://api.github.com/repos/acme/api/pulls/1234"
+        )])),
+    )
+    .await;
+    mount_graphql(
+        &server,
+        ResponseTemplate::new(200).set_body_json(detail_with_timeline(
+            vec![],
+            vec![
+                json!({ "__typename": "AutoMergeEnabledEvent", "id": "AME_1" }),
+                commit_item("bbbbbbb", "2026-09-04T08:00:00Z"),
+            ],
+            false,
+            "",
+        )),
+    )
+    .await;
+
+    let (_directory, mut engine) = engine(&server);
+    match engine.tick().await {
+        Ok(report) => {
+            assert_eq!(report.stored, 1);
+            assert!(report.failures.is_empty(), "{:?}", report.failures);
+        }
+        Err(error) => panic!("an unknown timeline item is not a tick failure: {error}"),
+    }
+
+    match engine.store().pull_request_view("acme", "api", 1234) {
+        Ok(Some(view)) => assert_eq!(view.events.len(), 1),
+        Ok(None) => panic!("the pull request must be readable"),
+        Err(error) => panic!("the detail must be readable: {error}"),
+    }
+}
+
+#[tokio::test]
+async fn a_review_still_being_drafted_never_reaches_the_feed() {
+    let server = MockServer::start().await;
+    mount_notifications(
+        &server,
+        ResponseTemplate::new(200).set_body_json(json!([notification(
+            "PullRequest",
+            "https://api.github.com/repos/acme/api/pulls/1234"
+        )])),
+    )
+    .await;
+    mount_graphql(
+        &server,
+        ResponseTemplate::new(200).set_body_json(detail_with_timeline(
+            vec![],
+            vec![review_item(
+                "PENDING",
+                "half written",
+                "2026-09-04T09:00:00Z",
+            )],
+            false,
+            "",
+        )),
+    )
+    .await;
+
+    let (_directory, mut engine) = engine(&server);
+    if let Err(error) = engine.tick().await {
+        panic!("the tick must succeed: {error}");
+    }
+
+    match engine.store().pull_request_view("acme", "api", 1234) {
+        Ok(Some(view)) => assert!(view.feed().is_empty()),
+        Ok(None) => panic!("the pull request must be readable"),
+        Err(error) => panic!("the detail must be readable: {error}"),
+    }
+}
+
+#[tokio::test]
+async fn a_timeline_repeated_on_every_page_of_threads_is_counted_once() {
+    let server = MockServer::start().await;
+    mount_notifications(
+        &server,
+        ResponseTemplate::new(200).set_body_json(json!([notification(
+            "PullRequest",
+            "https://api.github.com/repos/acme/api/pulls/1234"
+        )])),
+    )
+    .await;
+    Mock::given(method("POST"))
+        .and(path("/graphql"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(detail(
+            vec![thread("RT_1", false)],
+            true,
+            "cursor-1",
+        )))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    mount_graphql(
+        &server,
+        ResponseTemplate::new(200).set_body_json(detail(vec![thread("RT_2", false)], false, "")),
+    )
+    .await;
+
+    let (_directory, mut engine) = engine(&server);
+    if let Err(error) = engine.tick().await {
+        panic!("the tick must succeed: {error}");
+    }
+
+    match engine.store().pull_request_view("acme", "api", 1234) {
+        Ok(Some(view)) => assert_eq!(view.events.len(), 1),
+        Ok(None) => panic!("the pull request must be readable"),
+        Err(error) => panic!("the detail must be readable: {error}"),
+    }
 }

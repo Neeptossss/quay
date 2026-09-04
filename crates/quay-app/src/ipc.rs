@@ -80,14 +80,59 @@ pub struct CommentEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ThreadEntry {
-    pub node_id: String,
-    pub path: String,
-    pub line: Option<i64>,
-    pub is_resolved: bool,
-    pub is_outdated: bool,
-    pub comments: Vec<CommentEntry>,
+#[serde(tag = "item", rename_all = "camelCase")]
+pub enum FeedEntry {
+    #[serde(rename_all = "camelCase")]
+    Event {
+        node_id: String,
+        kind: String,
+        actor: String,
+        body: Option<String>,
+        reference: Option<String>,
+        at: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    Thread {
+        node_id: String,
+        path: String,
+        line: Option<i64>,
+        is_resolved: bool,
+        is_outdated: bool,
+        at: String,
+        comments: Vec<CommentEntry>,
+    },
+}
+
+impl From<quay_store::detail::FeedItem> for FeedEntry {
+    fn from(item: quay_store::detail::FeedItem) -> Self {
+        match item {
+            quay_store::detail::FeedItem::Event(event) => FeedEntry::Event {
+                node_id: event.node_id,
+                kind: event.kind.id().to_owned(),
+                actor: event.actor,
+                body: event.body,
+                reference: event.reference,
+                at: event.created_at,
+            },
+            quay_store::detail::FeedItem::Thread(thread) => FeedEntry::Thread {
+                node_id: thread.node_id,
+                path: thread.path,
+                line: thread.line,
+                is_resolved: thread.is_resolved,
+                is_outdated: thread.is_outdated,
+                at: thread.opened_at,
+                comments: thread
+                    .comments
+                    .into_iter()
+                    .map(|comment| CommentEntry {
+                        author: comment.author,
+                        body: comment.body,
+                        created_at: comment.created_at,
+                    })
+                    .collect(),
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -103,9 +148,11 @@ pub struct PullRequestEntry {
     pub state: String,
     pub review_state: Option<String>,
     pub checks_state: Option<String>,
+    pub base_ref: String,
+    pub head_sha: String,
     pub unresolved_threads: i64,
     pub updated_at: String,
-    pub threads: Vec<ThreadEntry>,
+    pub feed: Vec<FeedEntry>,
 }
 
 pub fn pull_request(store: &Store, key: &str) -> Result<Option<PullRequestEntry>, String> {
@@ -125,6 +172,7 @@ pub fn pull_request(store: &Store, key: &str) -> Result<Option<PullRequestEntry>
     Ok(found.map(|view| PullRequestEntry {
         key: key.to_owned(),
         unresolved_threads: view.unresolved_threads() as i64,
+        feed: view.feed().into_iter().map(FeedEntry::from).collect(),
         owner: view.owner,
         name: view.name,
         number: view.number,
@@ -132,29 +180,11 @@ pub fn pull_request(store: &Store, key: &str) -> Result<Option<PullRequestEntry>
         author: view.author,
         is_draft: view.is_draft,
         state: view.state,
+        base_ref: view.base_ref,
+        head_sha: view.head_sha,
         review_state: view.review_state,
         checks_state: view.checks_state,
         updated_at: view.updated_at,
-        threads: view
-            .threads
-            .into_iter()
-            .map(|thread| ThreadEntry {
-                node_id: thread.node_id,
-                path: thread.path,
-                line: thread.line,
-                is_resolved: thread.is_resolved,
-                is_outdated: thread.is_outdated,
-                comments: thread
-                    .comments
-                    .into_iter()
-                    .map(|comment| CommentEntry {
-                        author: comment.author,
-                        body: comment.body,
-                        created_at: comment.created_at,
-                    })
-                    .collect(),
-            })
-            .collect(),
     }))
 }
 

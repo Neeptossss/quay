@@ -1,6 +1,6 @@
 use quay_core::{
     Priority, PullRequest, PullRequestSnapshot, PullRequestState, Repository, ReviewComment,
-    ReviewRequest, ReviewThread,
+    ReviewRequest, ReviewThread, TimelineEvent, TimelineKind,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -11,9 +11,12 @@ use crate::governor::{OutboundRequest, RateGovernor};
 const THREADS_PER_PAGE: i64 = 50;
 const COMMENTS_PER_PAGE: i64 = 25;
 const REVIEWERS_PER_PAGE: i64 = 50;
+const TIMELINE_ITEMS: i64 = 60;
+const ABBREVIATED_OID: usize = 7;
+const MISSING_ACTOR: &str = "ghost";
 
 const DETAIL_QUERY: &str = "\
-query PrDetail($owner: String!, $name: String!, $number: Int!, $threads: Int!, $comments: Int!, $reviewers: Int!, $after: String) {
+query PrDetail($owner: String!, $name: String!, $number: Int!, $threads: Int!, $comments: Int!, $reviewers: Int!, $events: Int!, $head: Boolean!, $after: String) {
   repository(owner: $owner, name: $name) {
     id
     name
@@ -33,6 +36,26 @@ query PrDetail($owner: String!, $name: String!, $number: Int!, $threads: Int!, $
         }
       }
       commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+      timelineItems(last: $events, itemTypes: [PULL_REQUEST_COMMIT, ISSUE_COMMENT, PULL_REQUEST_REVIEW, REVIEW_REQUESTED_EVENT, READY_FOR_REVIEW_EVENT, MERGED_EVENT, CLOSED_EVENT, REOPENED_EVENT, HEAD_REF_FORCE_PUSHED_EVENT]) @include(if: $head) {
+        nodes {
+          __typename
+          ... on PullRequestCommit {
+            id
+            commit { oid messageHeadline committedDate author { name user { login } } }
+          }
+          ... on IssueComment { id body createdAt author { login } }
+          ... on PullRequestReview { id body state createdAt author { login } }
+          ... on ReviewRequestedEvent {
+            id createdAt actor { login }
+            requestedReviewer { __typename ... on User { login } ... on Team { slug } }
+          }
+          ... on ReadyForReviewEvent { id createdAt actor { login } }
+          ... on MergedEvent { id createdAt actor { login } commit { oid } }
+          ... on ClosedEvent { id createdAt actor { login } }
+          ... on ReopenedEvent { id createdAt actor { login } }
+          ... on HeadRefForcePushedEvent { id createdAt actor { login } afterCommit { oid } }
+        }
+      }
       reviewThreads(first: $threads, after: $after) {
         totalCount
         pageInfo { hasNextPage endCursor }
@@ -99,7 +122,98 @@ struct PullRequestNode {
     author: Option<ActorNode>,
     review_requests: ReviewRequestConnection,
     commits: CommitConnection,
+    timeline_items: Option<TimelineItemConnection>,
     review_threads: ReviewThreadConnection,
+}
+
+#[derive(Debug, Deserialize)]
+struct TimelineItemConnection {
+    nodes: Vec<TimelineItemNode>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OidNode {
+    oid: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CommitSummary {
+    oid: String,
+    message_headline: String,
+    committed_date: String,
+    author: Option<CommitAuthorNode>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommitAuthorNode {
+    name: Option<String>,
+    user: Option<ActorNode>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "__typename")]
+enum TimelineItemNode {
+    PullRequestCommit {
+        id: String,
+        commit: CommitSummary,
+    },
+    #[serde(rename_all = "camelCase")]
+    IssueComment {
+        id: String,
+        body: String,
+        created_at: String,
+        author: Option<ActorNode>,
+    },
+    #[serde(rename_all = "camelCase")]
+    PullRequestReview {
+        id: String,
+        body: String,
+        state: String,
+        created_at: String,
+        author: Option<ActorNode>,
+    },
+    #[serde(rename_all = "camelCase")]
+    ReviewRequestedEvent {
+        id: String,
+        created_at: String,
+        actor: Option<ActorNode>,
+        requested_reviewer: Option<RequestedReviewer>,
+    },
+    #[serde(rename_all = "camelCase")]
+    ReadyForReviewEvent {
+        id: String,
+        created_at: String,
+        actor: Option<ActorNode>,
+    },
+    #[serde(rename_all = "camelCase")]
+    MergedEvent {
+        id: String,
+        created_at: String,
+        actor: Option<ActorNode>,
+        commit: Option<OidNode>,
+    },
+    #[serde(rename_all = "camelCase")]
+    ClosedEvent {
+        id: String,
+        created_at: String,
+        actor: Option<ActorNode>,
+    },
+    #[serde(rename_all = "camelCase")]
+    ReopenedEvent {
+        id: String,
+        created_at: String,
+        actor: Option<ActorNode>,
+    },
+    #[serde(rename_all = "camelCase")]
+    HeadRefForcePushedEvent {
+        id: String,
+        created_at: String,
+        actor: Option<ActorNode>,
+        after_commit: Option<OidNode>,
+    },
+    #[serde(other)]
+    Unrecognised,
 }
 
 #[derive(Debug, Deserialize)]
@@ -200,8 +314,10 @@ pub async fn fetch(
     let mut cursor: Option<String> = None;
     let mut threads: Vec<ReviewThread> = Vec::new();
     let mut head: Option<(RepositoryNode, PullRequestNode)> = None;
+    let mut events: Vec<TimelineEvent> = Vec::new();
 
     loop {
+        let first_pass = cursor.is_none();
         let body = json!({
             "query": DETAIL_QUERY,
             "variables": {
@@ -211,6 +327,8 @@ pub async fn fetch(
                 "threads": THREADS_PER_PAGE,
                 "comments": COMMENTS_PER_PAGE,
                 "reviewers": REVIEWERS_PER_PAGE,
+                "events": TIMELINE_ITEMS,
+                "head": first_pass,
                 "after": cursor,
             }
         });
@@ -255,6 +373,9 @@ pub async fn fetch(
                     what: format!("{owner}/{name}#{number}"),
                 })?;
 
+        if first_pass && let Some(timeline) = &pull_request.timeline_items {
+            events.extend(timeline.nodes.iter().filter_map(read_event));
+        }
         threads.extend(pull_request.review_threads.nodes.iter().map(read_thread));
         let has_next_page = pull_request.review_threads.page_info.has_next_page;
         cursor = pull_request.review_threads.page_info.end_cursor.clone();
@@ -270,13 +391,14 @@ pub async fn fetch(
         what: format!("{owner}/{name}#{number}"),
     })?;
     let raw = serde_json::to_vec(&pages).unwrap_or_default();
-    assemble(repository, pull_request, threads, raw)
+    assemble(repository, pull_request, threads, events, raw)
 }
 
 fn assemble(
     repository: RepositoryNode,
     pull_request: PullRequestNode,
     threads: Vec<ReviewThread>,
+    events: Vec<TimelineEvent>,
     raw: Vec<u8>,
 ) -> Result<PullRequestSnapshot, ForgeError> {
     let state = PullRequestState::parse(&pull_request.state).ok_or_else(|| {
@@ -343,6 +465,7 @@ fn assemble(
         },
         threads,
         review_requests,
+        events,
         raw,
     })
 }
@@ -372,5 +495,157 @@ fn read_thread(node: &ReviewThreadNode) -> ReviewThread {
                 created_at: comment.created_at.clone(),
             })
             .collect(),
+    }
+}
+
+fn login_of(actor: &Option<ActorNode>) -> String {
+    actor
+        .as_ref()
+        .map(|actor| actor.login.clone())
+        .unwrap_or_else(|| MISSING_ACTOR.to_owned())
+}
+
+fn spoken_body(body: &str) -> Option<String> {
+    let trimmed = body.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+fn abbreviated(oid: &str) -> String {
+    oid.chars().take(ABBREVIATED_OID).collect()
+}
+
+fn read_event(node: &TimelineItemNode) -> Option<TimelineEvent> {
+    match node {
+        TimelineItemNode::PullRequestCommit { id, commit } => Some(TimelineEvent {
+            node_id: id.clone(),
+            kind: TimelineKind::Commit,
+            actor: commit
+                .author
+                .as_ref()
+                .and_then(|author| {
+                    author
+                        .user
+                        .as_ref()
+                        .map(|user| user.login.clone())
+                        .or_else(|| author.name.clone())
+                })
+                .unwrap_or_else(|| MISSING_ACTOR.to_owned()),
+            body: spoken_body(&commit.message_headline),
+            reference: Some(abbreviated(&commit.oid)),
+            created_at: commit.committed_date.clone(),
+        }),
+        TimelineItemNode::IssueComment {
+            id,
+            body,
+            created_at,
+            author,
+        } => Some(TimelineEvent {
+            node_id: id.clone(),
+            kind: TimelineKind::Comment,
+            actor: login_of(author),
+            body: spoken_body(body),
+            reference: None,
+            created_at: created_at.clone(),
+        }),
+        TimelineItemNode::PullRequestReview {
+            id,
+            body,
+            state,
+            created_at,
+            author,
+        } => {
+            let state = state.to_lowercase();
+            if state == "pending" {
+                return None;
+            }
+            Some(TimelineEvent {
+                node_id: id.clone(),
+                kind: TimelineKind::Review,
+                actor: login_of(author),
+                body: spoken_body(body),
+                reference: Some(state),
+                created_at: created_at.clone(),
+            })
+        }
+        TimelineItemNode::ReviewRequestedEvent {
+            id,
+            created_at,
+            actor,
+            requested_reviewer,
+        } => Some(TimelineEvent {
+            node_id: id.clone(),
+            kind: TimelineKind::ReviewRequested,
+            actor: login_of(actor),
+            body: None,
+            reference: match requested_reviewer {
+                Some(RequestedReviewer::User { login }) => Some(login.clone()),
+                Some(RequestedReviewer::Team { slug }) => Some(slug.clone()),
+                _ => None,
+            },
+            created_at: created_at.clone(),
+        }),
+        TimelineItemNode::ReadyForReviewEvent {
+            id,
+            created_at,
+            actor,
+        } => Some(TimelineEvent {
+            node_id: id.clone(),
+            kind: TimelineKind::ReadyForReview,
+            actor: login_of(actor),
+            body: None,
+            reference: None,
+            created_at: created_at.clone(),
+        }),
+        TimelineItemNode::MergedEvent {
+            id,
+            created_at,
+            actor,
+            commit,
+        } => Some(TimelineEvent {
+            node_id: id.clone(),
+            kind: TimelineKind::Merged,
+            actor: login_of(actor),
+            body: None,
+            reference: commit.as_ref().map(|commit| abbreviated(&commit.oid)),
+            created_at: created_at.clone(),
+        }),
+        TimelineItemNode::ClosedEvent {
+            id,
+            created_at,
+            actor,
+        } => Some(TimelineEvent {
+            node_id: id.clone(),
+            kind: TimelineKind::Closed,
+            actor: login_of(actor),
+            body: None,
+            reference: None,
+            created_at: created_at.clone(),
+        }),
+        TimelineItemNode::ReopenedEvent {
+            id,
+            created_at,
+            actor,
+        } => Some(TimelineEvent {
+            node_id: id.clone(),
+            kind: TimelineKind::Reopened,
+            actor: login_of(actor),
+            body: None,
+            reference: None,
+            created_at: created_at.clone(),
+        }),
+        TimelineItemNode::HeadRefForcePushedEvent {
+            id,
+            created_at,
+            actor,
+            after_commit,
+        } => Some(TimelineEvent {
+            node_id: id.clone(),
+            kind: TimelineKind::ForcePush,
+            actor: login_of(actor),
+            body: None,
+            reference: after_commit.as_ref().map(|commit| abbreviated(&commit.oid)),
+            created_at: created_at.clone(),
+        }),
+        TimelineItemNode::Unrecognised => None,
     }
 }

@@ -1,43 +1,49 @@
 <script lang="ts">
+  import Feed from "./Feed.svelte";
   import Icon from "./Icon.svelte";
   import type { PullRequestEntry } from "./ipc";
   import { checksIcon, checksTone, reviewIcon, reviewTone } from "./state";
   import { t } from "./i18n";
 
-  let { entry }: { entry: PullRequestEntry } = $props();
+  let {
+    entry,
+    focused = null,
+  }: { entry: PullRequestEntry; focused?: string | null } = $props();
+
+  const shortSha = $derived(entry.headSha.slice(0, 7));
 </script>
 
 <div class="detail">
-  <h1>{entry.title}</h1>
-  <div class="meta">
-    <span class="mono"><Icon name="git-branch" size={12} /> {entry.owner}/{entry.name}#{entry.number}</span>
-    <span><Icon name="user" size={12} /> {entry.author}</span>
-    <span class="tone-{checksTone(entry.checksState)}">
-      <Icon name={checksIcon(entry.checksState)} size={12} />
-      {t(`checks.${entry.checksState ?? "none"}`)}
-    </span>
-    <span class="tone-{reviewTone(entry.reviewState)}">
-      <Icon name={reviewIcon(entry.reviewState)} size={12} />
-      {t(`review.${entry.reviewState ?? "none"}`)}
-    </span>
-    <span class="muted">{t("detail.unresolved", { count: entry.unresolvedThreads })}</span>
-  </div>
+  <header>
+    <div class="title">
+      <span class="tone-{entry.state === 'open' ? 'waiting' : 'absent'}">
+        <Icon name={entry.state === "merged" ? "git-merge" : "git-pull-request"} size={14} />
+      </span>
+      <h1>{entry.title}</h1>
+    </div>
+    <div class="meta">
+      <span class="mono">{entry.owner}/{entry.name}#{entry.number}</span>
+      <span><Icon name="user" size={12} /> {entry.author}</span>
+      <span class="mono"><Icon name="git-branch" size={12} /> {entry.baseRef} ← {shortSha}</span>
+      <span class="tone-{checksTone(entry.checksState)}">
+        <Icon name={checksIcon(entry.checksState)} size={12} />
+        {t(`checks.${entry.checksState ?? "none"}`)}
+      </span>
+      <span class="tone-{reviewTone(entry.reviewState)}">
+        <Icon name={reviewIcon(entry.reviewState)} size={12} />
+        {t(`review.${entry.reviewState ?? "none"}`)}
+      </span>
+      <span class="muted">{t("detail.unresolved", { count: entry.unresolvedThreads })}</span>
+    </div>
+  </header>
 
-  {#if entry.threads.length === 0}
-    <p class="muted">{t("detail.no_threads")}</p>
+  {#if entry.feed.length === 0}
+    <p class="muted empty-feed">{t("feed.empty")}</p>
   {/if}
 
-  {#each entry.threads as thread (thread.path + (thread.line ?? 0) + thread.comments.length)}
-    <div class="thread {thread.isResolved ? '' : 'unresolved'}">
-      <div class="where">
-        <Icon name={thread.isResolved ? "circle-check" : "message-circle"} size={12} />
-        {thread.path}{thread.line === null ? "" : `:${thread.line}`}
-        {#if thread.isOutdated}<span class="faint">· {t("detail.thread.outdated")}</span>{/if}
-        {#if thread.isResolved}<span class="faint">· {t("detail.thread.resolved")}</span>{/if}
-      </div>
-      {#each thread.comments as comment (comment.createdAt + comment.author)}
-        <div class="comment"><span class="muted">{comment.author}</span> {comment.body}</div>
-      {/each}
-    </div>
-  {/each}
+  <div class="feed">
+    {#each entry.feed as item (item.nodeId)}
+      <Feed {item} focused={item.item === "thread" && item.nodeId === focused} />
+    {/each}
+  </div>
 </div>

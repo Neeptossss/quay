@@ -10,6 +10,7 @@
   import { measurePaint, observed, percentile } from "./latency";
   import { observePaint } from "./paint";
   import { scrollToKeep, windowOf } from "./virtual";
+  import { stepThrough, unresolvedThreads } from "./state";
   import { t } from "./i18n";
   import { segments } from "./keycaps";
   import { Confirmation } from "./confirm";
@@ -26,6 +27,7 @@
   let views: ViewEntry[] = $state([]);
   let entries: InboxEntry[] = $state([]);
   let opened: PullRequestEntry | null = $state(null);
+  let focusedThread: string | null = $state(null);
   let currentView = $state("");
   let cursor = $state(0);
   let failure: string | null = $state(null);
@@ -155,6 +157,7 @@
     if (!entry) return;
     try {
       opened = await ipc.pullRequest(entry.key);
+      focusedThread = null;
       failure = null;
     } catch (error) {
       failure = String(error);
@@ -222,6 +225,24 @@
     if (wanted !== list.scrollTop) list.scrollTop = wanted;
   }
 
+  function focusedUnresolved() {
+    const threads = unresolvedThreads(opened?.feed ?? []);
+    return threads.find((thread) => thread.nodeId === focusedThread) ?? threads[0] ?? null;
+  }
+
+  function moveThread(delta: number) {
+    const threads = unresolvedThreads(opened?.feed ?? []);
+    if (threads.length === 0) {
+      failure = t("action.needs_thread");
+      return;
+    }
+    focusedThread = stepThrough(threads, focusedThread, delta);
+    const element = focusedThread === null ? null : document.getElementById(`thread-${focusedThread}`);
+    if (element && typeof element.scrollIntoView === "function") {
+      element.scrollIntoView({ block: "center" });
+    }
+  }
+
   function move(delta: number) {
     if (entries.length === 0) return;
     cursor = Math.min(entries.length - 1, Math.max(0, cursor + delta));
@@ -262,6 +283,13 @@
         break;
       case "list.clear":
         opened = null;
+        focusedThread = null;
+        break;
+      case "pr.next_unresolved":
+        moveThread(1);
+        break;
+      case "pr.previous_unresolved":
+        moveThread(-1);
         break;
       case "goto.inbox":
         if (views[0]) await openView(views[0].name);
@@ -297,9 +325,9 @@
         break;
       }
       case "pr.resolve": {
-        const thread = opened?.threads.find((candidate) => !candidate.isResolved);
+        const thread = focusedUnresolved();
         if (!thread) {
-          failure = t("action.needs_open");
+          failure = t("action.needs_thread");
           break;
         }
         await act(command, () => ipc.resolveThread(thread.nodeId));
@@ -416,7 +444,7 @@
     {/if}
 
     {#if opened}
-      <Detail entry={opened} />
+      <Detail entry={opened} focused={focusedThread} />
     {:else if entries.length === 0}
       <div class="empty">
         <h2>{t("empty.title")}</h2>

@@ -1,4 +1,4 @@
-use quay_core::{PullRequestSnapshot, Repository, ReviewRequest, ReviewThread};
+use quay_core::{PullRequestSnapshot, Repository, ReviewRequest, ReviewThread, TimelineEvent};
 use rusqlite::{Connection, Transaction, params};
 
 use crate::error::StoreError;
@@ -35,6 +35,7 @@ pub fn save_snapshot(
     let pull_request_id = upsert_pull_request(&transaction, repo_id, snapshot)?;
     replace_threads(&transaction, pull_request_id, &snapshot.threads)?;
     replace_review_requests(&transaction, pull_request_id, &snapshot.review_requests)?;
+    replace_timeline(&transaction, pull_request_id, &snapshot.events)?;
     transaction.commit()?;
     Ok(pull_request_id)
 }
@@ -187,6 +188,33 @@ fn replace_review_requests(
             request.reviewer,
             i64::from(request.is_team),
             request.requested_at,
+        ])?;
+    }
+    Ok(())
+}
+
+fn replace_timeline(
+    transaction: &Transaction<'_>,
+    pull_request_id: i64,
+    events: &[TimelineEvent],
+) -> Result<(), StoreError> {
+    transaction.execute(
+        "DELETE FROM timeline_event WHERE pr_id = ?1",
+        params![pull_request_id],
+    )?;
+    let mut insert = transaction.prepare(
+        "INSERT INTO timeline_event (pr_id, node_id, kind, actor, body, reference, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+    )?;
+    for event in events {
+        insert.execute(params![
+            pull_request_id,
+            event.node_id,
+            event.kind.id(),
+            event.actor,
+            event.body,
+            event.reference,
+            event.created_at,
         ])?;
     }
     Ok(())

@@ -42,6 +42,13 @@ import User from "lucide-svelte/icons/user";
 import Clock from "lucide-svelte/icons/clock";
 import ListFilter from "lucide-svelte/icons/list-filter";
 import Dot from "lucide-svelte/icons/dot";
+import GitCommitHorizontal from "lucide-svelte/icons/git-commit-horizontal";
+import MessageSquare from "lucide-svelte/icons/message-square";
+import CircleX from "lucide-svelte/icons/circle-x";
+import UserPlus from "lucide-svelte/icons/user-plus";
+import Send from "lucide-svelte/icons/send";
+import RotateCcw from "lucide-svelte/icons/rotate-ccw";
+import FileCode from "lucide-svelte/icons/file-code";
 
 export const icons: Record<string, unknown> = {
   "inbox": Inbox,
@@ -88,4 +95,11 @@ export const icons: Record<string, unknown> = {
   "clock": Clock,
   "list-filter": ListFilter,
   "dot": Dot,
+  "git-commit-horizontal": GitCommitHorizontal,
+  "message-square": MessageSquare,
+  "circle-x": CircleX,
+  "user-plus": UserPlus,
+  "send": Send,
+  "rotate-ccw": RotateCcw,
+  "file-code": FileCode,
 };

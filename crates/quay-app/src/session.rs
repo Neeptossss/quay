@@ -480,37 +480,59 @@ pub fn show(locator: &str) -> Outcome {
         view.owner, view.name, view.number, view.title
     );
     println!(
-        "  {} par {}, review {}, checks {}, {} thread(s) non résolu(s)",
+        "  {} par {}, {} ← {}, review {}, checks {}, {} thread(s) non résolu(s)",
         view.state,
         view.author,
+        view.base_ref,
+        view.head_sha.chars().take(7).collect::<String>(),
         view.review_state.as_deref().unwrap_or("aucune"),
         view.checks_state.as_deref().unwrap_or("aucun"),
         view.unresolved_threads()
     );
-    if view.threads.is_empty() {
-        println!("  aucun thread de review");
+
+    let feed = view.feed();
+    if feed.is_empty() {
+        println!("  rien encore sur cette pull request");
     }
-    for thread in &view.threads {
-        let mark = if thread.is_resolved {
-            "résolu "
-        } else {
-            "ouvert "
-        };
-        let outdated = if thread.is_outdated {
-            " (obsolète)"
-        } else {
-            ""
-        };
-        println!(
-            "  [{mark}] {}:{}{outdated}",
-            thread.path,
-            thread
-                .line
-                .map(|line| line.to_string())
-                .unwrap_or_else(|| "?".to_owned())
-        );
-        for comment in &thread.comments {
-            println!("      {} — {}", comment.author, first_line(&comment.body));
+    let catalogue = crate::i18n::Catalogue::for_locale(&crate::i18n::preferred_locale());
+    for item in &feed {
+        match item {
+            quay_store::detail::FeedItem::Event(event) => {
+                println!(
+                    "  {}  {} {}{}",
+                    event.created_at,
+                    event.actor,
+                    catalogue.get(&crate::i18n::feed_key(
+                        event.kind,
+                        event.reference.as_deref()
+                    )),
+                    feed_tail_of(event)
+                );
+            }
+            quay_store::detail::FeedItem::Thread(thread) => {
+                println!(
+                    "  {}  [{}] {}:{}{}",
+                    thread.opened_at,
+                    if thread.is_resolved {
+                        "résolu"
+                    } else {
+                        "ouvert"
+                    },
+                    thread.path,
+                    thread
+                        .line
+                        .map(|line| line.to_string())
+                        .unwrap_or_else(|| "?".to_owned()),
+                    if thread.is_outdated {
+                        " (obsolète)"
+                    } else {
+                        ""
+                    }
+                );
+                for comment in &thread.comments {
+                    println!("      {} — {}", comment.author, first_line(&comment.body));
+                }
+            }
         }
     }
 
@@ -521,6 +543,22 @@ pub fn show(locator: &str) -> Outcome {
         if was_preloaded { ", préchargé" } else { "" }
     );
     Ok(())
+}
+
+fn feed_tail_of(event: &quay_store::detail::EventView) -> String {
+    let mut tail = String::new();
+    if let Some(reference) = &event.reference
+        && !matches!(
+            event.kind,
+            quay_core::TimelineKind::Review | quay_core::TimelineKind::ReviewRequested
+        )
+    {
+        tail.push_str(&format!(" {reference}"));
+    }
+    if let Some(body) = &event.body {
+        tail.push_str(&format!(" — {}", first_line(body)));
+    }
+    tail
 }
 
 fn first_line(body: &str) -> String {
