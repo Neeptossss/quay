@@ -9,8 +9,9 @@ use crate::paths;
 use crate::stats::Percentiles;
 
 const LAUNCHES: usize = 5;
-const PHASES: [&str; 4] = [
+const PHASES: [&str; 5] = [
     "store opened",
+    "builder about to run",
     "setup finished",
     "frontend bundle running",
     "first paint",

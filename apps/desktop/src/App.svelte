@@ -5,6 +5,7 @@
   import { ChordReader, tokenOf } from "./keys";
   import { measurePaint, observed, percentile } from "./latency";
   import { ROW_HEIGHT, scrollToKeep, windowOf } from "./virtual";
+  import { observePaint } from "./paint";
   import * as ipc from "./ipc";
   import type {
     CommandEntry,
@@ -78,10 +79,13 @@
   });
 
   async function boot() {
+    void ipc.mark("boot started");
     try {
       views = await ipc.savedViews();
+      void ipc.mark("views loaded");
       const first = views[0];
       if (first) await openView(first.name);
+      void ipc.mark("view loaded");
     } catch (error) {
       failure = String(error);
     }
@@ -90,16 +94,17 @@
     } catch (error) {
       failure = failure ?? String(error);
     }
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        ipc
-          .firstPaint()
-          .then((milliseconds) => {
-            coldStart = milliseconds;
-            return ipc.syncNow();
-          })
-          .catch(() => {});
-      });
+    void ipc.mark("boot finished");
+    observePaint((name, startTime) => {
+      void ipc.mark(`${name} at ${startTime.toFixed(0)} ms into the page`);
+      if (name !== "first-contentful-paint") return;
+      ipc
+        .firstPaint()
+        .then((milliseconds) => {
+          coldStart = milliseconds;
+          return ipc.syncNow();
+        })
+        .catch(() => {});
     });
   }
 

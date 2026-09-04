@@ -1277,3 +1277,75 @@ d'échappement, et la vérification affiche désormais les échecs au lieu de co
 1. Trancher le démarrage à froid, cf. les trois pistes ci-dessus.
 2. Taper dans la fenêtre pour que `keystroke_to_pixel` existe.
 3. La palette à arguments et le classement appris du §8.3, le `run` par commande côté cœur.
+
+---
+
+## Session 2026-09-04 (suite) — le démarrage à froid, correctement mesuré
+
+### Je corrige un chiffre que j'ai publié
+
+J'ai rapporté **4387 ms** de démarrage à froid. **C'était mon instrument qui était faux**, pas la
+machine. Je mesurais la première peinture avec deux `requestAnimationFrame` enchaînés après le
+chargement des données ; or dans un webview qui vient de s'ouvrir, deux images consécutives peuvent
+être séparées de deux secondes. J'ajoutais donc deux secondes de rien à la mesure.
+
+Le bon instrument est celui du navigateur lui-même, `PerformanceObserver` sur les entrées `paint`.
+Il place la première peinture de contenu à **73 ms dans la page**. Le chiffre corrigé est
+**2369 ms**, pas 4387.
+
+C'est exactement l'erreur contre laquelle le `CLAUDE.md` met en garde : un chiffre plausible et faux
+coûte plus cher qu'une absence de chiffre. Il était mesuré, mais il ne mesurait pas ce que je disais.
+
+### Où va réellement le temps
+
+| Phase | p50 sur 5 lancements | Delta |
+|---|---|---|
+| Base SQLite ouverte | 2 ms | 2 ms |
+| Runtime Tauri prêt | ~100 ms | ~98 ms |
+| **Fenêtre et webview créés** | **~2215 ms** | **~2115 ms** |
+| Bundle JS démarré | 2345 ms | 130 ms |
+| Première peinture de contenu | **2369 ms** | 24 ms |
+
+**Tout le dépassement tient dans la création du webview.** Notre code, magasin compris, pèse environ
+150 ms sur 2369, soit 6 %.
+
+### L'expérience qui tranche
+
+En construisant une **seconde** fenêtre juste après la première, dans le même processus :
+
+| Fenêtre | Coût |
+|---|---|
+| première | **2115 ms** |
+| seconde | **17 ms** |
+
+Le coût est donc **unique par processus**, pas par fenêtre : c'est l'initialisation de WebKit et de
+ses processus auxiliaires. La sonde a été retirée après l'expérience.
+
+### Ce que cela implique, et la décision qui n'est pas la mienne
+
+Le §4 demande « démarrage à froid → première liste peinte < 400 ms ». Le §5.3 choisit Tauri, donc un
+webview système. **Les deux semblent incompatibles sur cette plateforme** : l'initialisation de
+WebKit dépasse à elle seule le budget d'un facteur cinq, et l'application ne la contrôle pas.
+
+Trois issues, aucune que je tranche seul, c'est du §12 :
+
+1. **Garder le budget et changer la mesure de ce qu'il gouverne.** Le §1 décrit une application
+   qu'on laisse ouverte huit heures. Le coût est unique par processus : une fois l'application
+   lancée, ouvrir une fenêtre coûte 17 ms. Le budget pertinent serait alors « activation → liste
+   peinte », pas « lancement du processus ».
+2. **Garder le budget tel quel et le déclarer manqué par construction**, en documentant que c'est le
+   prix du webview système accepté au §5.3.
+3. **Remettre en cause le §5.3.** Une interface native coûterait bien moins au démarrage, et bien
+   plus partout ailleurs. Le §5.3 avait tranché sur la RAM et le partage du cœur, pas sur le
+   démarrage.
+
+Ma préférence est la première, parce qu'elle mesure ce que l'utilisateur vit, mais elle change ce que
+le §4 veut dire et cela doit être décidé, pas glissé.
+
+### Deux améliorations au passage
+
+- La fenêtre est désormais **construite par le code** plutôt que déclarée dans la configuration, ce
+  qui a permis d'isoler son coût et ce dont on aura besoin pour une barre de titre personnalisée.
+- Les sourcemaps ne sont plus embarquées en production : le bundle passe de 550 Ko à 64 Ko. Sans
+  effet mesurable sur le démarrage, mais 550 Ko de carte de sources dans un binaire livré n'a pas de
+  raison d'être.

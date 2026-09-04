@@ -2,18 +2,18 @@
   "budget_id": "cold_start_to_first_paint",
   "scenario": "cold-start, process launch to the first painted list",
   "statistic": "median",
-  "value": 4387.487375,
+  "value": 2368.821667,
   "unit": "ms",
   "percentiles": {
-    "samples": 3,
-    "min": 4362.687916999999,
-    "mean": 4385.6945276666665,
-    "p50": 4387.487375,
-    "p95": 4406.908291,
-    "p99": 4406.908291,
-    "max": 4406.908291
+    "samples": 5,
+    "min": 2350.168208,
+    "mean": 2370.1146834,
+    "p50": 2368.821667,
+    "p95": 2407.01575,
+    "p99": 2407.01575,
+    "max": 2407.01575
   },
-  "measured_at": "2026-09-04T17:33:58.599415Z",
+  "measured_at": "2026-09-04T17:56:50.03104Z",
   "machine": "aarch64-macos",
-  "raw_log": "measurements/raw/cold-start-2026-09-04T173358.599415Z.jsonl"
+  "raw_log": "measurements/raw/cold-start-2026-09-04T175650.03104Z.jsonl"
 }

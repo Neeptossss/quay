@@ -70,6 +70,7 @@ export interface SyncState {
 export const syncNow = () => invoke<void>("sync_now");
 export const syncState = () => invoke<SyncState>("sync_state");
 export const firstPaint = () => invoke<number>("first_paint");
+export const mark = (phase: string) => invoke<void>("mark", { phase }).catch(() => {});
 
 export function onInboxChanged(handler: () => void) {
   return listen("inbox_changed", handler);

@@ -133,6 +133,14 @@ fn bundle_loaded(desktop: State<'_, Desktop>) {
 }
 
 #[tauri::command]
+fn mark(phase: String, desktop: State<'_, Desktop>) {
+    tracing::info!(
+        elapsed_ms = desktop.started.elapsed().as_secs_f64() * 1_000.0,
+        "{phase}"
+    );
+}
+
+#[tauri::command]
 fn first_paint(desktop: State<'_, Desktop>) -> f64 {
     let elapsed = desktop.started.elapsed().as_secs_f64() * 1_000.0;
     tracing::info!(elapsed_ms = elapsed, "first paint");
@@ -300,6 +308,10 @@ pub fn run(started: Instant) -> Result<(), Box<dyn std::error::Error>> {
         &quay_forge::GrantedScopes::default(),
     );
 
+    tracing::info!(
+        elapsed_ms = started.elapsed().as_secs_f64() * 1_000.0,
+        "builder about to run"
+    );
     tauri::Builder::default()
         .setup(move |application| {
             application.manage(Desktop {
@@ -310,6 +322,23 @@ pub fn run(started: Instant) -> Result<(), Box<dyn std::error::Error>> {
                 started,
                 first_paint: Mutex::new(None),
             });
+            tracing::info!(
+                elapsed_ms = started.elapsed().as_secs_f64() * 1_000.0,
+                "runtime ready, creating the window"
+            );
+            tauri::WebviewWindowBuilder::new(
+                application,
+                "main",
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("Quay")
+            .inner_size(1280.0, 820.0)
+            .min_inner_size(720.0, 480.0)
+            .build()?;
+            tracing::info!(
+                elapsed_ms = started.elapsed().as_secs_f64() * 1_000.0,
+                "first window built"
+            );
             spawn_sync_loop(application.handle().clone());
             tracing::info!(
                 elapsed_ms = started.elapsed().as_secs_f64() * 1_000.0,
@@ -317,11 +346,19 @@ pub fn run(started: Instant) -> Result<(), Box<dyn std::error::Error>> {
             );
             Ok(())
         })
+        .on_page_load(move |window, _| {
+            tracing::info!(
+                elapsed_ms = started.elapsed().as_secs_f64() * 1_000.0,
+                "page loaded in {}",
+                window.label()
+            );
+        })
         .invoke_handler(tauri::generate_handler![
             sync_now,
             sync_state,
             first_paint,
             bundle_loaded,
+            mark,
             key_map,
             palette,
             saved_views,

@@ -8,3 +8,4 @@ if (target === null) throw new Error("le point de montage est absent");
 
 void invoke("bundle_loaded").catch(() => {});
 mount(App, { target });
+void invoke("mark", { phase: "mount returned" }).catch(() => {});
