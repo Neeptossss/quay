@@ -82,6 +82,7 @@ pub struct CommentEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadEntry {
+    pub node_id: String,
     pub path: String,
     pub line: Option<i64>,
     pub is_resolved: bool,
@@ -138,6 +139,7 @@ pub fn pull_request(store: &Store, key: &str) -> Result<Option<PullRequestEntry>
             .threads
             .into_iter()
             .map(|thread| ThreadEntry {
+                node_id: thread.node_id,
                 path: thread.path,
                 line: thread.line,
                 is_resolved: thread.is_resolved,
@@ -212,6 +214,95 @@ pub fn palette(
                 })
         })
         .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueuedMutation {
+    pub id: i64,
+    pub kind: String,
+    pub target: String,
+    pub state: String,
+    pub attempts: u32,
+    pub last_error: Option<String>,
+}
+
+pub fn queued(store: &Store) -> Result<Vec<QueuedMutation>, String> {
+    let mut rows = Vec::new();
+    for state in [
+        quay_core::MutationState::Pending,
+        quay_core::MutationState::InFlight,
+        quay_core::MutationState::Failed,
+    ] {
+        for mutation in store
+            .mutations_in_state(state)
+            .map_err(|error| error.to_string())?
+        {
+            rows.push(QueuedMutation {
+                id: mutation.id,
+                kind: mutation.kind.id().to_owned(),
+                target: mutation.target,
+                state: mutation.state.id().to_owned(),
+                attempts: mutation.attempts,
+                last_error: mutation.last_error,
+            });
+        }
+    }
+    Ok(rows)
+}
+
+pub fn approve(store: &mut Store, key: &str, now: i64) -> Result<i64, String> {
+    let node_id = node_id_of(store, key)?;
+    store
+        .approve_pull_request(&node_id, &format!("approve_pr:{node_id}:{now}"), now)
+        .map_err(|error| error.to_string())
+}
+
+pub fn request_changes(store: &mut Store, key: &str, now: i64) -> Result<i64, String> {
+    let node_id = node_id_of(store, key)?;
+    store
+        .request_changes(&node_id, &format!("request_changes:{node_id}:{now}"), now)
+        .map_err(|error| error.to_string())
+}
+
+pub fn merge(store: &mut Store, key: &str, now: i64) -> Result<i64, String> {
+    let node_id = node_id_of(store, key)?;
+    store
+        .merge_pull_request(&node_id, &format!("merge_pr:{node_id}:{now}"), now)
+        .map_err(|error| error.to_string())
+}
+
+fn node_id_of(store: &Store, key: &str) -> Result<String, String> {
+    let (owner, name, number) = locator_of(key)?;
+    store
+        .find_pull_request(&owner, &name, number)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("{key} n'est pas dans la base locale"))
+}
+
+pub fn resolve_thread(store: &mut Store, node_id: &str, now: i64) -> Result<i64, String> {
+    store
+        .resolve_thread(node_id, &format!("resolve_thread:{node_id}:{now}"), now)
+        .map_err(|error| error.to_string())
+}
+
+pub fn cancel(store: &mut Store, id: i64) -> Result<(), String> {
+    store
+        .roll_back_mutation(id, "annulée par l'utilisateur")
+        .map_err(|error| error.to_string())
+}
+
+fn locator_of(key: &str) -> Result<(String, String, i64), String> {
+    let (repository, number) = key
+        .rsplit_once('#')
+        .ok_or_else(|| format!("clé illisible : {key}"))?;
+    let (owner, name) = repository
+        .split_once('/')
+        .ok_or_else(|| format!("clé illisible : {key}"))?;
+    let number: i64 = number
+        .parse()
+        .map_err(|_| format!("clé illisible : {key}"))?;
+    Ok((owner.to_owned(), name.to_owned(), number))
 }
 
 pub fn saved_views(store: &Store) -> Result<Vec<ViewEntry>, String> {

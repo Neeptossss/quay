@@ -1456,3 +1456,49 @@ du balisage, et faisait passer une traduction par `@html`. Un découpage pur, `s
 compose. Le catalogue ne contient plus que du texte, aucune traduction ne traverse `@html`, et un
 marqueur qu'on ne fournit pas reste visible plutôt que de laisser un trou. Plus aucun `@html` dans le
 frontend.
+
+---
+
+## Session 2026-09-04 (suite) — les actions arrivent dans la fenêtre
+
+La fenêtre était en lecture seule : on naviguait, on ouvrait, rien n'agissait. La file de mutations
+du §7.3 existait et était testée, mais aucune touche ne l'atteignait.
+
+### Ce qui a été fait
+
+- **Toutes les commandes du registre qui agissent sont branchées** : approuver, demander des
+  changements, merger, résoudre un fil. Chacune passe par la file optimiste : l'état local change
+  immédiatement, la ligne de file est écrite dans la même transaction, et l'envoi est différé par le
+  verrou de lecture seule sans annuler l'intention.
+- **`merge` et `demander des changements` ont reçu leur chemin optimiste dans le magasin**, avec le
+  retour arrière correspondant. Le §8.1 dit que rien de découvrable n'échoue : deux commandes
+  visibles dans la palette et liées à une touche qui n'auraient rien fait, c'était exactement
+  l'interdit. Merger repose la pull request à `open` quand la forge refuse.
+- **Confirmation en ligne** (§8.2) : une action publique — approuver, demander des changements,
+  merger, commenter, répondre, archiver — attend que la touche soit **retapée**. Une bande discrète
+  l'annonce en montrant la touche à retaper. Aucune modale, aucun vol de focus, et n'importe quelle
+  autre touche abandonne.
+- **Palette navigable aux flèches**, et la file en attente apparaît dans le pied de la barre
+  latérale, en attente et en échec séparés.
+- Un événement `mutation_failed` remonte du cœur, et la bande d'échec est non modale, comme le §7.3
+  le demande.
+
+### Deux bugs, dont un dans mon propre harnais
+
+**Une lecture accessoire écrasait encore l'échec principal.** J'avais corrigé le cas de l'état de
+synchronisation ; la lecture de la file l'a réintroduit. Corrigé à la racine, et un test parcourt
+maintenant **chaque** lecture accessoire du démarrage pour vérifier qu'aucune n'efface l'échec de la
+vue. La règle est figée plutôt que le symptôme.
+
+**Mon harnais de test laissait les composants montés d'un test à l'autre.** Le test « abandonne la
+confirmation quand une autre touche arrive » échouait : une frappe atteignait aussi les fenêtres des
+tests précédents, dont l'une attendait justement une confirmation, et déclenchait un merge. Ce
+n'était pas un défaut du produit mais un défaut de mesure — et il rendait tous les tests précédents
+moins fiables qu'ils n'en avaient l'air. Le rendu démonte désormais l'instance précédente.
+
+### Réserve
+
+Le flux de confirmation ne peut pas être vérifié à l'œil depuis cette session, `osascript` n'ayant
+pas le droit d'envoyer des frappes. Il est vérifié là où c'est possible : trois tests envoient de
+vrais événements clavier au composant monté et vérifient qu'une première frappe n'envoie rien,
+qu'une seconde envoie, et qu'une touche différente abandonne.

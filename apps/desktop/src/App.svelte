@@ -12,6 +12,7 @@
   import { scrollToKeep, windowOf } from "./virtual";
   import { t } from "./i18n";
   import { segments } from "./keycaps";
+  import { Confirmation } from "./confirm";
   import * as ipc from "./ipc";
   import type {
     CommandEntry,
@@ -35,6 +36,10 @@
   let paletteCursor = $state(0);
 
   let pending = $state("");
+  let awaiting: string | null = $state(null);
+  let notice: string | null = $state(null);
+  let queue: ipc.QueuedMutation[] = $state([]);
+  const confirmation = new Confirmation();
   let sync: SyncState | null = $state(null);
   let coldStart: number | null = $state(null);
   let keystroke: number | null = $state(null);
@@ -48,6 +53,9 @@
   let currentQuery = $derived(views.find((view) => view.name === currentView)?.query ?? "");
   let reader = new ChordReader([]);
   let bindings: ipc.KeyBinding[] = $state([]);
+  let awaitingChord = $derived(
+    bindings.find((binding) => binding.command === awaiting)?.chord ?? "",
+  );
 
   async function loadKeyMap(current: Scope) {
     try {
@@ -75,6 +83,10 @@
       ipc.onCapabilitiesChanged(() => {
         void loadKeyMap(scope);
       }),
+      ipc.onMutationFailed((failures) => {
+        failure = failures[0] ?? null;
+        void refreshQueue();
+      }),
     ];
     for (const attachment of attaching) {
       attachment.catch((error) => {
@@ -96,10 +108,11 @@
     } catch (error) {
       failure = String(error);
     }
+    await refreshQueue();
     try {
       sync = await ipc.syncState();
     } catch (error) {
-      failure = failure ?? String(error);
+      failure ??= String(error);
     }
     observePaint((name) => {
       if (name !== "first-contentful-paint") return;
@@ -141,6 +154,32 @@
     } catch (error) {
       failure = String(error);
     }
+  }
+
+  async function refreshQueue() {
+    try {
+      queue = await ipc.queued();
+    } catch (error) {
+      failure ??= String(error);
+    }
+  }
+
+  async function act(command: string, run: () => Promise<number>) {
+    try {
+      await run();
+      notice = t("action.queued", { action: t(`command.${command}`) });
+      failure = null;
+      if (currentView) await openView(currentView, false);
+      if (opened) opened = await ipc.pullRequest(opened.key);
+      await refreshQueue();
+    } catch (error) {
+      notice = null;
+      failure = t("error.mutation", { reason: String(error) });
+    }
+  }
+
+  function openedKey(): string | null {
+    return opened?.key ?? entries[cursor]?.key ?? null;
   }
 
   async function refreshPalette() {
@@ -201,6 +240,42 @@
       case "goto.my_pull_requests":
         if (views[1]) await openView(views[1].name);
         break;
+      case "review.approve": {
+        const key = openedKey();
+        if (key === null) {
+          failure = t("action.needs_open");
+          break;
+        }
+        await act(command, () => ipc.approve(key));
+        break;
+      }
+      case "review.request_changes": {
+        const key = openedKey();
+        if (key === null) {
+          failure = t("action.needs_open");
+          break;
+        }
+        await act(command, () => ipc.requestChanges(key));
+        break;
+      }
+      case "pr.merge": {
+        const key = openedKey();
+        if (key === null) {
+          failure = t("action.needs_open");
+          break;
+        }
+        await act(command, () => ipc.merge(key));
+        break;
+      }
+      case "pr.resolve": {
+        const thread = opened?.threads.find((candidate) => !candidate.isResolved);
+        if (!thread) {
+          failure = t("action.needs_open");
+          break;
+        }
+        await act(command, () => ipc.resolveThread(thread.nodeId));
+        break;
+      }
       default:
         break;
     }
@@ -221,7 +296,12 @@
         paletteOpen = false;
         if (chosen && chosen.enabled) await dispatch(chosen.id);
       } else if (token === "ArrowDown" || token === "ArrowUp") {
-        return;
+        event.preventDefault();
+        const step = token === "ArrowDown" ? 1 : -1;
+        const total = paletteEntries.length;
+        if (total > 0) {
+          paletteCursor = Math.min(total - 1, Math.max(0, paletteCursor + step));
+        }
       } else {
         return;
       }
@@ -239,12 +319,23 @@
       return;
     }
     pending = "";
-    if (outcome === null) return;
+    if (outcome === null) {
+      confirmation.clear();
+      awaiting = null;
+      return;
+    }
     event.preventDefault();
     if (!outcome.enabled) {
       failure = t(outcome.titleKey);
       return;
     }
+    if (!confirmation.accept(outcome.command)) {
+      awaiting = confirmation.pendingCommand;
+      measurePaint("confirm", started);
+      keystroke = percentile(0.99);
+      return;
+    }
+    awaiting = null;
     await dispatch(outcome.command);
     measurePaint(outcome.command, started);
     if (observed() > 0) keystroke = percentile(0.99);
@@ -265,6 +356,7 @@
     current={currentView}
     {sync}
     shortcuts={bindings.length}
+    {queue}
     {coldStart}
     {keystroke}
     onOpen={(name) => openView(name)}
@@ -272,6 +364,20 @@
 
   <section class="view">
     <TopBar {heading} query={currentQuery} count={entries.length} {pending} />
+
+    {#if awaiting}
+      <div class="notice confirm">
+        <Icon name="circle-alert" size={13} />
+        {#each segments(t("confirm.retype"), { key: awaitingChord }) as part, index (index)}
+          {#if part.kind === "key"}<Kbd chord={part.value} tone="strong" />{:else}{part.value.replace(
+              "{action}",
+              t(`command.${awaiting}`),
+            )}{/if}
+        {/each}
+      </div>
+    {:else if notice}
+      <div class="notice"><Icon name="circle-check" size={13} />{notice}</div>
+    {/if}
 
     {#if failure}
       <div class="banner"><Icon name="circle-alert" size={13} />{failure}</div>

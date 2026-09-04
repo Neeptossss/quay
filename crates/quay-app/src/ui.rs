@@ -45,6 +45,13 @@ impl Desktop {
         }
     }
 
+    fn with_store_mut<T>(&self, write: impl FnOnce(&mut Store) -> T) -> T {
+        match self.store.lock() {
+            Ok(mut store) => write(&mut store),
+            Err(poisoned) => write(&mut poisoned.into_inner()),
+        }
+    }
+
     fn with_capabilities<T>(&self, read: impl FnOnce(&Capabilities) -> T) -> T {
         match self.capabilities.lock() {
             Ok(capabilities) => read(&capabilities),
@@ -179,6 +186,47 @@ fn sync_now(application: AppHandle) {
     tauri::async_runtime::spawn(async move {
         run_one_cycle(&application).await;
     });
+}
+
+#[tauri::command]
+fn queued(desktop: State<'_, Desktop>) -> Result<Vec<ipc::QueuedMutation>, String> {
+    desktop.with_store(ipc::queued)
+}
+
+#[tauri::command]
+fn approve(key: String, desktop: State<'_, Desktop>) -> Result<i64, String> {
+    let now = now_seconds();
+    desktop.with_store_mut(|store| ipc::approve(store, &key, now))
+}
+
+#[tauri::command]
+fn request_changes(key: String, desktop: State<'_, Desktop>) -> Result<i64, String> {
+    let now = now_seconds();
+    desktop.with_store_mut(|store| ipc::request_changes(store, &key, now))
+}
+
+#[tauri::command]
+fn merge(key: String, desktop: State<'_, Desktop>) -> Result<i64, String> {
+    let now = now_seconds();
+    desktop.with_store_mut(|store| ipc::merge(store, &key, now))
+}
+
+#[tauri::command]
+fn resolve_thread(node_id: String, desktop: State<'_, Desktop>) -> Result<i64, String> {
+    let now = now_seconds();
+    desktop.with_store_mut(|store| ipc::resolve_thread(store, &node_id, now))
+}
+
+#[tauri::command]
+fn cancel(id: i64, desktop: State<'_, Desktop>) -> Result<(), String> {
+    desktop.with_store_mut(|store| ipc::cancel(store, id))
+}
+
+fn now_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 #[tauri::command]
@@ -384,6 +432,12 @@ pub fn run(started: Instant) -> Result<(), Box<dyn std::error::Error>> {
             run_view,
             run_query,
             pull_request,
+            queued,
+            approve,
+            request_changes,
+            merge,
+            resolve_thread,
+            cancel,
             completions
         ])
         .run(tauri::generate_context!())?;

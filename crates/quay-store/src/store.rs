@@ -84,6 +84,24 @@ impl Store {
         )
     }
 
+    pub fn request_changes(
+        &mut self,
+        pull_request_node_id: &str,
+        idempotency: &str,
+        now: i64,
+    ) -> Result<i64, StoreError> {
+        optimistic::request_changes(&mut self.connection, pull_request_node_id, idempotency, now)
+    }
+
+    pub fn merge_pull_request(
+        &mut self,
+        pull_request_node_id: &str,
+        idempotency: &str,
+        now: i64,
+    ) -> Result<i64, StoreError> {
+        optimistic::merge_pull_request(&mut self.connection, pull_request_node_id, idempotency, now)
+    }
+
     pub fn resolve_thread(
         &mut self,
         thread_node_id: &str,

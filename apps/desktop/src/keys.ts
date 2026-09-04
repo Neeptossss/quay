@@ -6,6 +6,10 @@ const NAMED: Record<string, string> = {
   Escape: "Esc",
   Tab: "Tab",
   Backspace: "Backspace",
+  ArrowUp: "ArrowUp",
+  ArrowDown: "ArrowDown",
+  ArrowLeft: "ArrowLeft",
+  ArrowRight: "ArrowRight",
 };
 
 export function tokenOf(event: KeyboardEvent): string | null {

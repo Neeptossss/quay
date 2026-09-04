@@ -333,6 +333,21 @@
   color: var(--ink-faint);
 }
 
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px var(--gutter);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel);
+  color: var(--ink-muted);
+}
+
+.notice.confirm {
+  border-bottom-color: var(--waiting);
+  color: var(--ink);
+}
+
 .banner {
   display: flex;
   align-items: center;

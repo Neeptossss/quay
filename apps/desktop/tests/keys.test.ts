@@ -34,6 +34,11 @@ describe("tokenOf", () => {
     expect(press("k", true)).toBe("⌘k");
   });
 
+  it("nomme les flèches, dont la palette a besoin", () => {
+    expect(press("ArrowDown")).toBe("ArrowDown");
+    expect(press("ArrowUp")).toBe("ArrowUp");
+  });
+
   it("ignore une touche sans caractère ni nom connu", () => {
     expect(press("Shift")).toBeNull();
     expect(press("F5")).toBeNull();

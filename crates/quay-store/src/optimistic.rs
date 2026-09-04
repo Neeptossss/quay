@@ -33,6 +33,62 @@ pub fn approve_pull_request(
     })
 }
 
+pub fn request_changes(
+    connection: &mut Connection,
+    pull_request_node_id: &str,
+    idempotency: &str,
+    now: i64,
+) -> Result<i64, StoreError> {
+    let previous: Option<String> = read_optional_text(
+        connection,
+        "SELECT review_state FROM pull_request WHERE node_id = ?1",
+        pull_request_node_id,
+    )?;
+    let change = OptimisticChange {
+        kind: MutationKind::RequestChanges,
+        target: pull_request_node_id.to_owned(),
+        payload: json!({ "previous_review_state": previous }).to_string(),
+        idempotency: idempotency.to_owned(),
+        created_at: now,
+    };
+    mutations::enqueue_with_local_effect(connection, &change, |transaction| {
+        expect_one_row(
+            transaction,
+            "UPDATE pull_request SET review_state = 'changes_requested' WHERE node_id = ?1",
+            pull_request_node_id,
+            "pull_request",
+        )
+    })
+}
+
+pub fn merge_pull_request(
+    connection: &mut Connection,
+    pull_request_node_id: &str,
+    idempotency: &str,
+    now: i64,
+) -> Result<i64, StoreError> {
+    let previous: Option<String> = read_optional_text(
+        connection,
+        "SELECT state FROM pull_request WHERE node_id = ?1",
+        pull_request_node_id,
+    )?;
+    let change = OptimisticChange {
+        kind: MutationKind::MergePullRequest,
+        target: pull_request_node_id.to_owned(),
+        payload: json!({ "previous_state": previous }).to_string(),
+        idempotency: idempotency.to_owned(),
+        created_at: now,
+    };
+    mutations::enqueue_with_local_effect(connection, &change, |transaction| {
+        expect_one_row(
+            transaction,
+            "UPDATE pull_request SET state = 'merged' WHERE node_id = ?1",
+            pull_request_node_id,
+            "pull_request",
+        )
+    })
+}
+
 pub fn resolve_thread(
     connection: &mut Connection,
     thread_node_id: &str,
@@ -106,7 +162,17 @@ fn restore(transaction: &Transaction<'_>, mutation: &Mutation) -> Result<(), Sto
                 params![mutation.target, previous],
             )?;
         }
-        MutationKind::PostComment | MutationKind::MergePullRequest => {}
+        MutationKind::MergePullRequest => {
+            let previous = payload
+                .get("previous_state")
+                .and_then(|value| value.as_str())
+                .unwrap_or("open");
+            transaction.execute(
+                "UPDATE pull_request SET state = ?2 WHERE node_id = ?1",
+                params![mutation.target, previous],
+            )?;
+        }
+        MutationKind::PostComment => {}
     }
     Ok(())
 }

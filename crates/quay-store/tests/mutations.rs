@@ -305,3 +305,62 @@ fn the_queue_survives_reopening_the_database() {
         Err(error) => panic!("the queue must be readable: {error}"),
     }
 }
+
+#[test]
+fn requesting_changes_sets_the_review_state_and_rolls_back_to_what_it_was() {
+    let (_directory, mut store) = store();
+    let identifier = match store.request_changes("PR_1", "idem-1", NOW) {
+        Ok(identifier) => identifier,
+        Err(error) => panic!("the mutation must enqueue: {error}"),
+    };
+    assert_eq!(
+        review_state(&store, "PR_1").as_deref(),
+        Some("changes_requested")
+    );
+    if let Err(error) = store.roll_back_mutation(identifier, "403 forbidden") {
+        panic!("the rollback must succeed: {error}");
+    }
+    assert_eq!(review_state(&store, "PR_1").as_deref(), Some("commented"));
+}
+
+#[test]
+fn merging_closes_the_pull_request_locally_and_rolls_back_to_open() {
+    let (_directory, mut store) = store();
+    let state = |store: &Store| -> String {
+        match store.connection().query_row(
+            "SELECT state FROM pull_request WHERE node_id = 'PR_1'",
+            [],
+            |row| row.get(0),
+        ) {
+            Ok(value) => value,
+            Err(error) => panic!("the pull request must be readable: {error}"),
+        }
+    };
+    assert_eq!(state(&store), "open");
+    let identifier = match store.merge_pull_request("PR_1", "idem-1", NOW) {
+        Ok(identifier) => identifier,
+        Err(error) => panic!("the mutation must enqueue: {error}"),
+    };
+    assert_eq!(state(&store), "merged");
+    if let Err(error) = store.roll_back_mutation(identifier, "409 conflict") {
+        panic!("the rollback must succeed: {error}");
+    }
+    assert_eq!(
+        state(&store),
+        "open",
+        "a refused merge must put the pull request back where the user found it"
+    );
+}
+
+#[test]
+fn a_merge_and_an_approval_on_the_same_target_are_serialised() {
+    let (_directory, mut store) = store();
+    if let Err(error) = store.approve_pull_request("PR_1", "idem-1", NOW) {
+        panic!("the approval must enqueue: {error}");
+    }
+    if let Err(error) = store.merge_pull_request("PR_1", "idem-2", NOW) {
+        panic!("the merge must enqueue: {error}");
+    }
+    assert!(matches!(store.claim_next_mutation(), Ok(Some(_))));
+    assert!(matches!(store.claim_next_mutation(), Ok(None)));
+}

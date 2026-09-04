@@ -42,6 +42,7 @@ export interface ViewEntry {
 }
 
 export interface ThreadEntry {
+  nodeId: string;
   path: string;
   line: number | null;
   isResolved: boolean;
@@ -84,4 +85,24 @@ export function onSyncState(handler: (state: SyncState) => void) {
 
 export function onCapabilitiesChanged(handler: () => void) {
   return listen("capabilities_changed", handler);
+}
+
+export interface QueuedMutation {
+  id: number;
+  kind: string;
+  target: string;
+  state: string;
+  attempts: number;
+  lastError: string | null;
+}
+
+export const queued = () => invoke<QueuedMutation[]>("queued");
+export const approve = (key: string) => invoke<number>("approve", { key });
+export const resolveThread = (nodeId: string) => invoke<number>("resolve_thread", { nodeId });
+export const requestChanges = (key: string) => invoke<number>("request_changes", { key });
+export const merge = (key: string) => invoke<number>("merge", { key });
+export const cancel = (id: number) => invoke<void>("cancel", { id });
+
+export function onMutationFailed(handler: (failures: string[]) => void) {
+  return listen<string[]>("mutation_failed", (event) => handler(event.payload));
 }

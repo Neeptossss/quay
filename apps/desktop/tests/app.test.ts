@@ -34,12 +34,21 @@ function answer(overrides: Record<string, unknown> = {}) {
           icon: "arrow-down",
           enabled: true,
         },
+        {
+          chord: "m",
+          command: "pr.merge",
+          titleKey: "command.pr.merge",
+          icon: "git-merge",
+          enabled: true,
+        },
       ],
+      merge: 1,
       catalogue: { "app.name": "Quay", "view.to_review": "À relire" },
       locale: "fr",
       palette: [],
       pull_request: null,
       sync_state: { phase: "idle", detail: "au repos", healthy: true },
+      queued: [],
       ...overrides,
     };
     if (!(command in table)) return Promise.reject(new Error(`commande inconnue ${command}`));
@@ -48,15 +57,29 @@ function answer(overrides: Record<string, unknown> = {}) {
   });
 }
 
+let live: Record<string, unknown> | null = null;
+
 async function render() {
   const { adopt } = await import("../src/i18n");
-  adopt({ "app.name": "Quay", "view.to_review": "À relire", "status.entries": "{count} entrée(s)" }, "fr");
-  const { mount, flushSync } = await import("svelte");
+  adopt(
+    {
+      "app.name": "Quay",
+      "view.to_review": "À relire",
+      "status.entries": "{count} entrée(s)",
+      "confirm.retype": "Retaper {key} pour confirmer : {action}",
+    },
+    "fr",
+  );
+  const { mount, unmount, flushSync } = await import("svelte");
   const App = (await import("../src/App.svelte")).default;
+  if (live !== null) {
+    unmount(live);
+    live = null;
+  }
   document.body.innerHTML = '<div id="app"></div>';
   const target = document.getElementById("app");
   if (target === null) throw new Error("point de montage absent");
-  mount(App, { target });
+  live = mount(App, { target }) as Record<string, unknown>;
   flushSync();
   await new Promise((resolve) => setTimeout(resolve, 0));
   flushSync();
@@ -96,6 +119,15 @@ describe("App", () => {
     expect(body.textContent).not.toContain("état illisible");
   });
 
+  it("aucune lecture accessoire du démarrage n'écrase l'échec de la vue", async () => {
+    for (const accessory of ["sync_state", "queued", "key_map"]) {
+      answer({ run_view: new Error("aucune vue"), [accessory]: new Error(`bruit ${accessory}`) });
+      const body = await render();
+      expect(body.textContent, accessory).toContain("aucune vue");
+      expect(body.textContent, accessory).not.toContain("bruit");
+    }
+  });
+
   it("affiche l'état de synchronisation rendu par le cœur", async () => {
     answer();
     const body = await render();
@@ -121,5 +153,43 @@ describe("App", () => {
     expect(painted).toBeGreaterThan(0);
     expect(painted).toBeLessThan(200);
     expect(body.textContent).toContain("4000 entrée(s)");
+  });
+});
+
+describe("action publique", () => {
+  beforeEach(() => {
+    invoke.mockReset();
+  });
+
+  async function press(key: string) {
+    const { flushSync } = await import("svelte");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    flushSync();
+  }
+
+  it("ne part pas à la première frappe et demande de retaper", async () => {
+    answer();
+    const body = await render();
+    await press("m");
+    expect(invoke).not.toHaveBeenCalledWith("merge", expect.anything());
+    expect(body.querySelector(".notice.confirm")).not.toBeNull();
+  });
+
+  it("part quand la touche est retapée", async () => {
+    answer();
+    await render();
+    await press("m");
+    await press("m");
+    expect(invoke).toHaveBeenCalledWith("merge", { key: entry.key });
+  });
+
+  it("abandonne la confirmation quand une autre touche arrive", async () => {
+    answer();
+    const body = await render();
+    await press("m");
+    await press("j");
+    expect(invoke).not.toHaveBeenCalledWith("merge", expect.anything());
+    expect(body.querySelector(".notice.confirm")).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
   import Kbd from "./Kbd.svelte";
-  import type { SyncState, ViewEntry } from "./ipc";
+  import type { QueuedMutation, SyncState, ViewEntry } from "./ipc";
   import { t } from "./i18n";
   import { syncIcon } from "./state";
 
@@ -12,6 +12,7 @@
     shortcuts,
     coldStart,
     keystroke,
+    queue,
     onOpen,
   }: {
     views: ViewEntry[];
@@ -20,6 +21,7 @@
     shortcuts: number;
     coldStart: number | null;
     keystroke: number | null;
+    queue: QueuedMutation[];
     onOpen: (name: string) => void;
   } = $props();
 </script>
@@ -67,5 +69,14 @@
       <span><Icon name="keyboard" size={11} />{t("status.shortcuts", { count: shortcuts })}</span>
       <span></span>
     </div>
+    {#if queue.length > 0}
+      <div class="line">
+        <span class={queue.some((entry) => entry.state === "failed") ? "tone-bad" : "tone-waiting"}>
+          <Icon name="git-merge" size={11} />
+          {t("queue.pending", { count: queue.filter((entry) => entry.state !== "failed").length })}
+        </span>
+        <span>{t("queue.failed", { count: queue.filter((entry) => entry.state === "failed").length })}</span>
+      </div>
+    {/if}
   </footer>
 </aside>
