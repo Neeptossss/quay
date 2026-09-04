@@ -38,6 +38,12 @@ pub enum ForgeError {
     #[error("the forge answered with a payload this client cannot read: {message}")]
     MalformedPayload { message: String },
 
+    #[error("the forge refused the query: {}", messages.join("; "))]
+    ForgeRefusedQuery { messages: Vec<String> },
+
+    #[error("the forge knows no {what}")]
+    MissingResource { what: String },
+
     #[error("the operating system credential store refused the request: {0}")]
     CredentialStore(String),
 

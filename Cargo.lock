@@ -1723,12 +1723,14 @@ dependencies = [
 name = "quay-forge"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "keyring",
  "quay-core",
  "reqwest",
  "serde",
  "serde_json",
  "thiserror",
+ "time",
  "tokio",
  "tracing",
  "wiremock",
@@ -1755,6 +1757,14 @@ name = "quay-sync"
 version = "0.1.0"
 dependencies = [
  "quay-core",
+ "quay-forge",
+ "quay-store",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "wiremock",
 ]
 
 [[package]]
@@ -3018,6 +3028,7 @@ dependencies = [
  "quay-core",
  "quay-forge",
  "quay-store",
+ "quay-sync",
  "rusqlite",
  "serde",
  "serde_json",

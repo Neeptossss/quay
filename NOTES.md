@@ -588,3 +588,86 @@ Ce qui ne bouge pas d'une exécution à l'autre : le compteur de threads non ré
 catastrophique sur le §6 (203 à 267 ms à 30 000 PR) et **plat** sur le schéma corrigé (0,059 à
 0,068 ms aux trois échelles), et `review_requested_exact` reste à 0,09-0,11 ms contre 5 ms de
 budget. Les deux corrections structurantes sont confirmées.
+
+---
+
+## Session 2026-09-04 (suite) — étape 6, le chemin de fetch complet
+
+### Ce qui a été fait
+
+Le chemin `/notifications` → détail de PR → SQLite est complet et vérifié contre la vraie API.
+
+- **Types du domaine** dans `quay-core` : `Repository`, `PullRequest`, `ReviewThread`,
+  `ReviewComment`, `ReviewRequest`, `PullRequestSnapshot`. Les réponses de l'API sont désérialisées
+  dans les types de transport de `quay-forge`, puis converties, jamais lues directement dans ces
+  types-là (§11).
+- **`EntityId.node_id` renommé en `key`.** Une notification donne le dépôt et le numéro de la PR,
+  pas son node id : celui-ci n'est connu qu'après le fetch. La clé d'une PR est donc son localisateur
+  `owner/name#numero`, ce qu'un `PushSource` du §5.5 produirait à l'identique puisque le backend
+  n'enverrait que `{repo_id, pr_number}`. Le nom portait une implémentation qui n'était pas la
+  bonne.
+- **Écritures du magasin** : `upsert_account`, et `save_pull_request` qui écrit dépôt, pull request,
+  payload brut, threads, commentaires et demandes de review dans une seule transaction. Threads et
+  demandes sont **remplacés** en bloc, ce qui applique la règle du §7.4 — l'API fait autorité — sans
+  code de réconciliation ligne à ligne. Il n'y a pas encore de file de mutations, donc le cas « une
+  mutation en attente gagne » du §7.4 n'est pas implémenté : il arrive avec le §7.3.
+- **`PollingSource`** dans `quay-forge`, implémentant `EventSource`. Requête conditionnelle sur
+  `/notifications`, respect de `X-Poll-Interval` via `Tier::interval_respecting`, 304 rendu comme
+  « aucun signal ». `quay-sync` ne dépend que du trait, jamais de cette implémentation.
+- **Détail de PR en GraphQL** avec **pagination complète des threads**. J1-a avait montré que le
+  coût suit la profondeur des threads, pas le nombre de fichiers, et qu'une PR de 170 threads est
+  tronquée à 100 en une passe. Un compteur de threads non résolus tronqué mentirait à l'utilisateur
+  sur la seule information qui lui dit s'il a du travail : les pages sont donc toutes lues. Les
+  fichiers ne sont pas récupérés, l'inbox ne les affiche pas ; ils viendront avec la vue de diff.
+- **`SyncEngine`** dans `quay-sync` : draine les sources, déduplique sur `(entity_id, updated_at)`,
+  et pour chaque signal compare `updated_at` à la fraîcheur locale avant de sortir sur le réseau. Un
+  échec sur une PR est rapporté dans le bilan du tick sans interrompre les autres.
+
+### Vérification contre la vraie API
+
+Les fixtures `wiremock` sont de mon invention : elles prouvent que le pipeline se tient, pas que la
+requête GraphQL correspond au schéma réel de GitHub. `cargo run -p xtask -- sync-once` exécute un
+tick réel, en lecture seule.
+
+| Observation | Résultat |
+|---|---|
+| Signaux tirés de `/notifications` | 10 |
+| PR récupérées et écrites dans SQLite | 10, **0 échec** |
+| Requêtes émises au total | 13, soit 1 par PR plus identité et inbox |
+| Durée du tick | 7 547 ms, soit ~755 ms par PR |
+| États stockés | 9 `merged`, 1 `open` |
+| Threads, commentaires, demandes de review | 5, 5, 1 |
+| Inbox rendue après coup | 1 ligne, la seule PR ouverte |
+
+Les ~755 ms par PR retombent exactement sur le plancher mesuré en J1-a, ce qui est une confirmation
+croisée : le chemin complet ne coûte rien de plus que l'aller-retour réseau lui-même.
+
+L'inbox ne rend qu'une ligne sur dix PR stockées parce que neuf sont `merged` : le filtre
+`state = 'open'` fait son travail. `review_requested_exact` rend zéro ligne parce que sur la seule
+PR ouverte l'utilisateur est l'**auteur**, et le filtre canonique du §8.4 exclut `author:@me`. Les
+deux résultats sont corrects et vérifiés plutôt que supposés, d'où l'ajout du décompte par état dans
+la sortie de `sync-once`.
+
+### Ce qui n'est pas mesuré
+
+Les temps d'inbox affichés par `sync-once` (0,2 ms environ) portent sur une base quasi vide et **ne
+mesurent pas** le budget du §4. Le budget `inbox_query` reste porté par J1-b sur le dataset de
+référence. Aucun chiffre de `sync-once` n'alimente `measurements/`.
+
+### Réserves
+
+- Les validateurs de `/notifications` sont persistés par `SyncEngine::remember_notification_validators`
+  mais `sync-once` repart de zéro à chaque exécution, donc le 304 gratuit mesuré en M0-1 n'est pas
+  encore exercé de bout en bout. Il le sera quand le scheduler tournera en continu, à l'étape 7.
+- `stale_after` est écrit avec l'intervalle du tier warm. Le tier hot qui suit le focus (§7.1) n'a
+  pas encore de consommateur : il n'y a pas d'écran.
+- Le `diff_hunk` du §3.5 n'est pas récupéré. Il n'est pas utile à l'inbox et alourdirait la requête
+  dont J1-a a montré qu'elle est déjà dominée par la profondeur des threads. À reprendre avec la vue
+  de diff.
+
+### Ce qu'il faut faire ensuite
+
+1. Étape 7 : première sortie visible, l'inbox réelle multi-repos, avec le critère de sortie du §9 —
+   affichage depuis SQLite en moins de 5 ms sur un jeu réel.
+2. Boucler le scheduler : rejouer les validateurs entre les ticks pour exercer le 304 gratuit, et
+   faire piloter le rythme par `due_for_refresh`.

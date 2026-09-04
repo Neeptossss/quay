@@ -6,6 +6,7 @@ mod paths;
 mod report;
 mod stats;
 mod summary;
+mod sync_once;
 
 use std::process::ExitCode;
 
@@ -32,6 +33,7 @@ fn main() -> ExitCode {
         (Some("measure"), Some("j1b")) => measure_command(Scenario::J1b),
         (Some("measure"), Some("all")) => measure_command(Scenario::All),
         (Some("report"), _) => report_command(),
+        (Some("sync-once"), _) => sync_once_command(),
         _ => usage(),
     }
 }
@@ -51,6 +53,7 @@ fn usage() -> ExitCode {
     eprintln!("  measure j1b    measure the inbox query against the reference dataset");
     eprintln!("  measure all    run both measurements");
     eprintln!("  report         regenerate measurements/REPORT.md from the raw logs");
+    eprintln!("  sync-once      run one full fetch tick against the forge and read the inbox back");
     ExitCode::from(2)
 }
 
@@ -158,6 +161,23 @@ fn measure_command(scenario: Scenario) -> ExitCode {
     }
 
     report_command()
+}
+
+fn sync_once_command() -> ExitCode {
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            eprintln!("the async runtime could not start: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match runtime.block_on(sync_once::run()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("the fetch path failed: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn report_command() -> ExitCode {

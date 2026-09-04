@@ -11,15 +11,28 @@ pub enum EntityKind {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityId {
     pub kind: EntityKind,
-    pub node_id: String,
+    pub key: String,
 }
 
 impl EntityId {
-    pub fn new(kind: EntityKind, node_id: impl Into<String>) -> Self {
+    pub fn new(kind: EntityKind, key: impl Into<String>) -> Self {
         Self {
             kind,
-            node_id: node_id.into(),
+            key: key.into(),
         }
+    }
+
+    pub fn pull_request(owner: &str, name: &str, number: i64) -> Self {
+        Self::new(EntityKind::PullRequest, format!("{owner}/{name}#{number}"))
+    }
+
+    pub fn as_pull_request(&self) -> Option<(String, String, i64)> {
+        if self.kind != EntityKind::PullRequest {
+            return None;
+        }
+        let (repository, number) = self.key.rsplit_once('#')?;
+        let (owner, name) = repository.split_once('/')?;
+        Some((owner.to_owned(), name.to_owned(), number.parse().ok()?))
     }
 }
 
@@ -53,11 +66,44 @@ pub fn merge_deduplicated(signals: impl IntoIterator<Item = ChangeSignal>) -> Ve
 mod tests {
     use super::{ChangeSignal, EntityId, EntityKind, Timestamp, merge_deduplicated};
 
-    fn signal(node_id: &str, updated_at: i64) -> ChangeSignal {
+    fn signal(key: &str, updated_at: i64) -> ChangeSignal {
         ChangeSignal::new(
-            EntityId::new(EntityKind::PullRequest, node_id),
+            EntityId::new(EntityKind::PullRequest, key),
             Timestamp(updated_at),
         )
+    }
+
+    #[test]
+    fn a_pull_request_key_survives_a_round_trip_through_its_locator() {
+        let entity = EntityId::pull_request("acme", "api", 123);
+        assert_eq!(entity.key, "acme/api#123");
+        assert_eq!(
+            entity.as_pull_request(),
+            Some(("acme".to_owned(), "api".to_owned(), 123))
+        );
+    }
+
+    #[test]
+    fn a_repository_name_carrying_a_hash_is_still_parsed_from_the_right() {
+        let entity = EntityId::new(EntityKind::PullRequest, "acme/we#ird#7");
+        assert_eq!(
+            entity.as_pull_request(),
+            Some(("acme".to_owned(), "we#ird".to_owned(), 7))
+        );
+    }
+
+    #[test]
+    fn an_entity_of_another_kind_is_not_read_as_a_pull_request() {
+        let entity = EntityId::new(EntityKind::Notification, "acme/api#1");
+        assert!(entity.as_pull_request().is_none());
+    }
+
+    #[test]
+    fn a_malformed_locator_is_refused_rather_than_guessed() {
+        for key in ["acme/api", "acme#1", "acme/api#not-a-number", ""] {
+            let entity = EntityId::new(EntityKind::PullRequest, key);
+            assert!(entity.as_pull_request().is_none(), "{key}");
+        }
     }
 
     #[test]
@@ -78,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    fn the_same_node_id_under_two_entity_kinds_is_not_deduplicated() {
+    fn the_same_key_under_two_entity_kinds_is_not_deduplicated() {
         let pull_request = signal("SHARED", 100);
         let thread = ChangeSignal::new(
             EntityId::new(EntityKind::ReviewThread, "SHARED"),

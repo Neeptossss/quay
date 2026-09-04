@@ -1,4 +1,8 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
-pub use quay_core::{ChangeSignal, EventSource, Priority};
+mod engine;
+mod error;
+
+pub use engine::{SyncEngine, TickReport};
+pub use error::SyncError;

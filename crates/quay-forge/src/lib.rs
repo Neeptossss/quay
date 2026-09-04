@@ -6,10 +6,13 @@ mod backoff;
 mod budget;
 mod capabilities;
 mod conditional;
+mod detail;
 mod error;
 mod governor;
 mod keychain;
 mod locks;
+mod notifications;
+mod polling;
 mod scopes;
 mod token;
 mod transport;
@@ -19,6 +22,7 @@ pub use backoff::Backoff;
 pub use budget::SlidingBudget;
 pub use capabilities::{Capabilities, Capability, Reason, Support};
 pub use conditional::CacheValidators;
+pub use detail::fetch as fetch_pull_request;
 pub use error::ForgeError;
 pub use governor::{
     ForgeResponse, GovernorConfig, Health, OutboundRequest, RateGovernor, RateLimitSnapshot,
@@ -26,6 +30,8 @@ pub use governor::{
 };
 pub use keychain::Keychain;
 pub use locks::DevLocks;
+pub use notifications::{pull_request_locator, signal_from};
+pub use polling::{PollingSource, epoch_seconds};
 pub use scopes::GrantedScopes;
 pub use token::Token;
 pub use transport::{

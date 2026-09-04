@@ -8,6 +8,7 @@ pub mod migrations;
 pub mod resource_cache;
 pub mod schema;
 mod store;
+pub mod write;
 
 pub use error::StoreError;
 pub use resource_cache::CacheEntry;
