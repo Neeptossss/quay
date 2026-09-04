@@ -1502,3 +1502,56 @@ Le flux de confirmation ne peut pas être vérifié à l'œil depuis cette sessi
 pas le droit d'envoyer des frappes. Il est vérifié là où c'est possible : trois tests envoient de
 vrais événements clavier au composant monté et vérifient qu'une première frappe n'envoie rien,
 qu'une seconde envoie, et qu'une touche différente abandonne.
+
+---
+
+## Session 2026-09-04 (suite) — sélecteur d'organisation
+
+Ordre de travail redemandé : sélecteur d'organisation, puis l'écran d'une pull request avec son fil,
+puis la vue de diff en dernier.
+
+### Le choix qui structure le reste
+
+Le sélecteur **passe par le DSL** plutôt que par un filtre parallèle. Choisir une organisation
+réécrit la requête de la vue courante en y posant `org:acme`, et la barre haute affiche déjà cette
+requête en clair. Trois conséquences :
+
+- l'utilisateur **voit** ce que le sélecteur a fait, et peut taper la même chose à la main ;
+- il n'existe qu'une façon d'exprimer un filtre, donc rien à réconcilier entre deux chemins ;
+- le remplacement est idempotent : rescoper une requête qui porte déjà `org:` remplace le terme au
+  lieu de l'empiler, et déscoper le retire. Quatre tests figent ces cas, y compris un `-org:` nié
+  déjà présent.
+
+Le qualificateur `org:` rejoint le langage du §8.4, se complète comme les autres, et se compile en
+`r.owner = ?` avec la valeur **liée**, jamais interpolée, ce qu'un test vérifie.
+
+### Le schéma
+
+Migration `0003` : une table `organization` par compte, et une colonne `selected_organization` sur
+`account`. J'ai choisi une colonne plutôt qu'une table clé-valeur générique : un seul usage ne
+justifie pas une table fourre-tout, et `ALTER TABLE ADD COLUMN` est non destructif. Appliquée sans
+intervention à la base réelle, qui est passée de la version 2 à la 3.
+
+### Ce que le sélecteur montre
+
+L'union de deux ensembles, et c'est délibéré : les organisations dont l'utilisateur est **membre**,
+lues sur `/user/orgs`, et les propriétaires qui ont réellement des pull requests ouvertes en local.
+Sur la base réelle, cela fait apparaître `vercel`, qui a une pull request ouverte sans faire partie
+des neuf organisations du compte. N'afficher que les organisations membres l'aurait rendue
+inatteignable ; n'afficher que les propriétaires locaux aurait masqué une organisation encore vide.
+Chaque entrée porte son décompte de pull requests ouvertes.
+
+### Vérification
+
+Le schéma, le langage, le compilateur et le rescopage sont couverts par des tests. La base réelle
+montre 9 organisations mémorisées et les propriétaires attendus. **La capture d'écran du sélecteur
+n'a pas pu être prise** : la machine s'est verrouillée pendant la session. L'affichage est donc
+vérifié par le typage, les tests de montage et les données, pas à l'œil.
+
+### Réserves
+
+- Le sélecteur se manipule à la souris. Aucun raccourci ne lui est attribué, parce que le §8.2 n'en
+  prévoit pas et que je n'invente pas de liaison hors spec.
+- Les dépôts et les favoris ne sont pas faits, c'est la suite annoncée.
+- Le décompte affiché est celui des pull requests ouvertes connues **localement**, donc il dépend de
+  ce qui a été synchronisé. Ce n'est pas le décompte de la forge.

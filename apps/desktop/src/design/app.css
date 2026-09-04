@@ -62,6 +62,17 @@
   font-weight: 500;
 }
 
+.sidebar .tally {
+  font-family: var(--font-mono);
+  font-size: var(--text-caps);
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar .item[aria-current="true"] .tally {
+  color: var(--ink-muted);
+}
+
 .sidebar footer {
   border-top: 1px solid var(--hairline);
   padding: 7px var(--gutter);

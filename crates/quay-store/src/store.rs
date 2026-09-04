@@ -349,4 +349,36 @@ impl Store {
     pub fn connection(&self) -> &Connection {
         &self.connection
     }
+
+    pub fn connection_mut(&mut self) -> &mut Connection {
+        &mut self.connection
+    }
+
+    pub fn organizations(&self, account_id: i64) -> Result<Vec<crate::Organization>, StoreError> {
+        crate::organizations::all(&self.connection, account_id)
+    }
+
+    pub fn remember_organizations(
+        &mut self,
+        account_id: i64,
+        memberships: &[(String, Option<String>)],
+    ) -> Result<(), StoreError> {
+        crate::organizations::replace(&mut self.connection, account_id, memberships)
+    }
+
+    pub fn selected_organization(&self, account_id: i64) -> Result<Option<String>, StoreError> {
+        crate::organizations::selected(&self.connection, account_id)
+    }
+
+    pub fn select_organization(
+        &self,
+        account_id: i64,
+        login: Option<&str>,
+    ) -> Result<(), StoreError> {
+        crate::organizations::select(&self.connection, account_id, login)
+    }
+
+    pub fn owners_with_pull_requests(&self) -> Result<Vec<crate::Organization>, StoreError> {
+        crate::organizations::owners_with_pull_requests(&self.connection)
+    }
 }

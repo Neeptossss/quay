@@ -9,18 +9,20 @@ pub enum Qualifier {
     ReviewRequested,
     Assignee,
     Label,
+    Org,
     Repo,
     Checks,
     Sort,
 }
 
 impl Qualifier {
-    pub const ALL: [Qualifier; 8] = [
+    pub const ALL: [Qualifier; 9] = [
         Qualifier::Is,
         Qualifier::Author,
         Qualifier::ReviewRequested,
         Qualifier::Assignee,
         Qualifier::Label,
+        Qualifier::Org,
         Qualifier::Repo,
         Qualifier::Checks,
         Qualifier::Sort,
@@ -33,6 +35,7 @@ impl Qualifier {
             Qualifier::ReviewRequested => "review-requested",
             Qualifier::Assignee => "assignee",
             Qualifier::Label => "label",
+            Qualifier::Org => "org",
             Qualifier::Repo => "repo",
             Qualifier::Checks => "checks",
             Qualifier::Sort => "sort",
@@ -51,7 +54,7 @@ impl Qualifier {
             Qualifier::Checks => Some(&["success", "failing", "pending", "none"]),
             Qualifier::Sort => Some(&["updated-desc", "updated-asc", "number-desc", "number-asc"]),
             Qualifier::Author | Qualifier::ReviewRequested | Qualifier::Assignee => None,
-            Qualifier::Label | Qualifier::Repo => None,
+            Qualifier::Label | Qualifier::Org | Qualifier::Repo => None,
         }
     }
 
@@ -314,6 +317,16 @@ mod tests {
         };
         assert!(parsed.mentions(Qualifier::Is, "issue"));
         assert_eq!(parsed.value_of(Qualifier::Repo), Some("org/api"));
+    }
+
+    #[test]
+    fn an_organisation_qualifier_parses_and_is_negatable() {
+        let parsed = match parse("is:pr is:open org:acme") {
+            Ok(parsed) => parsed,
+            Err(error) => panic!("an organisation filter must parse: {error}"),
+        };
+        assert_eq!(parsed.value_of(Qualifier::Org), Some("acme"));
+        assert!(parse("-org:acme").is_ok());
     }
 
     #[test]

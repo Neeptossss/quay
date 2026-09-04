@@ -74,6 +74,17 @@ fn condition_for(
                 format!("EXISTS ({exists})")
             }))
         }
+        Qualifier::Org => {
+            parameters.push(Value::Text(value));
+            Ok(Some(
+                if term.negated {
+                    "r.owner <> ?"
+                } else {
+                    "r.owner = ?"
+                }
+                .to_owned(),
+            ))
+        }
         Qualifier::Repo => {
             let (owner, name) =
                 value
@@ -237,6 +248,23 @@ mod tests {
     fn absent_checks_are_matched_without_a_parameter_because_null_is_not_a_value() {
         let sql = sql_of("checks:none");
         assert!(sql.contains("pr.checks_state IS NULL"));
+    }
+
+    #[test]
+    fn an_organisation_narrows_on_the_repository_owner() {
+        assert!(sql_of("org:acme").contains("r.owner = ?"));
+        assert!(sql_of("-org:acme").contains("r.owner <> ?"));
+    }
+
+    #[test]
+    fn an_organisation_value_is_bound_and_never_interpolated() {
+        let compiled = compile(&parse_query("org:acme").unwrap(), "octocat", 50).unwrap();
+        assert!(!compiled.sql.contains("acme"));
+        assert!(
+            compiled
+                .parameters
+                .contains(&rusqlite::types::Value::Text("acme".to_owned()))
+        );
     }
 
     #[test]

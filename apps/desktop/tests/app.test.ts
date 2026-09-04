@@ -49,6 +49,9 @@ function answer(overrides: Record<string, unknown> = {}) {
       pull_request: null,
       sync_state: { phase: "idle", detail: "au repos", healthy: true },
       queued: [],
+      view_query: "is:pr is:open",
+      organizations: [],
+      selected_organization: null,
       ...overrides,
     };
     if (!(command in table)) return Promise.reject(new Error(`commande inconnue ${command}`));
@@ -120,7 +123,7 @@ describe("App", () => {
   });
 
   it("aucune lecture accessoire du démarrage n'écrase l'échec de la vue", async () => {
-    for (const accessory of ["sync_state", "queued", "key_map"]) {
+    for (const accessory of ["sync_state", "queued", "key_map", "organizations"]) {
       answer({ run_view: new Error("aucune vue"), [accessory]: new Error(`bruit ${accessory}`) });
       const body = await render();
       expect(body.textContent, accessory).toContain("aucune vue");

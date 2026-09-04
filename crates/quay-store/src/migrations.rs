@@ -12,7 +12,7 @@ pub struct Migration {
     pub rewrites_existing_rows: bool,
 }
 
-pub const MIGRATIONS: [Migration; 2] = [
+pub const MIGRATIONS: [Migration; 3] = [
     Migration {
         version: 1,
         name: "initial",
@@ -23,6 +23,12 @@ pub const MIGRATIONS: [Migration; 2] = [
         version: 2,
         name: "unique_saved_views",
         sql: schema::UNIQUE_SAVED_VIEWS,
+        rewrites_existing_rows: false,
+    },
+    Migration {
+        version: 3,
+        name: "organizations",
+        sql: schema::ORGANIZATIONS,
         rewrites_existing_rows: false,
     },
 ];
@@ -132,7 +138,7 @@ mod tests {
         let (_directory, path, mut connection) = fresh();
         let version = apply(&mut connection, &path, &MIGRATIONS).unwrap();
         assert_eq!(version, latest_version(&MIGRATIONS));
-        assert_eq!(current_version(&connection).unwrap(), 2);
+        assert_eq!(current_version(&connection).unwrap(), 3);
     }
 
     #[test]
@@ -141,7 +147,7 @@ mod tests {
         apply(&mut connection, &path, &MIGRATIONS[..1]).unwrap();
         assert_eq!(current_version(&connection).unwrap(), 1);
         apply(&mut connection, &path, &MIGRATIONS).unwrap();
-        assert_eq!(current_version(&connection).unwrap(), 2);
+        assert_eq!(current_version(&connection).unwrap(), 3);
     }
 
     #[test]
@@ -149,7 +155,7 @@ mod tests {
         let (_directory, path, mut connection) = fresh();
         apply(&mut connection, &path, &MIGRATIONS).unwrap();
         let version = apply(&mut connection, &path, &MIGRATIONS).unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
     }
 
     #[test]
@@ -162,7 +168,7 @@ mod tests {
         match apply(&mut connection, &path, &MIGRATIONS) {
             Err(StoreError::DatabaseFromTheFuture { found, supported }) => {
                 assert_eq!(found, 99);
-                assert_eq!(supported, 2);
+                assert_eq!(supported, 3);
             }
             other => panic!("a future database must be refused, got {other:?}"),
         }
@@ -215,8 +221,9 @@ mod tests {
         let with_destructive = [
             MIGRATIONS[0].borrowed(),
             MIGRATIONS[1].borrowed(),
+            MIGRATIONS[2].borrowed(),
             Migration {
-                version: 3,
+                version: 4,
                 name: "drop_saved_views",
                 sql: "DROP TABLE saved_view",
                 rewrites_existing_rows: true,
@@ -224,7 +231,7 @@ mod tests {
         ];
         apply(&mut connection, &path, &with_destructive).unwrap();
 
-        let backup = path.with_extension("before-v3.backup");
+        let backup = path.with_extension("before-v4.backup");
         assert!(backup.exists(), "the backup must exist at {backup:?}");
         let saved = rusqlite::Connection::open(&backup).unwrap();
         let survives: i64 = saved
@@ -252,8 +259,9 @@ mod tests {
         let with_destructive = [
             MIGRATIONS[0].borrowed(),
             MIGRATIONS[1].borrowed(),
+            MIGRATIONS[2].borrowed(),
             Migration {
-                version: 3,
+                version: 4,
                 name: "drop_saved_views",
                 sql: "DROP TABLE saved_view",
                 rewrites_existing_rows: true,
@@ -261,7 +269,7 @@ mod tests {
         ];
         apply(&mut connection, &path, &with_destructive).unwrap();
 
-        let backup = path.with_extension("before-v3.backup");
+        let backup = path.with_extension("before-v4.backup");
         let saved = rusqlite::Connection::open(&backup).unwrap();
         let rows: i64 = saved
             .query_row("SELECT COUNT(*) FROM saved_view", [], |row| row.get(0))

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
   import Kbd from "./Kbd.svelte";
-  import type { QueuedMutation, SyncState, ViewEntry } from "./ipc";
+  import type { QueuedMutation, ScopeEntry, SyncState, ViewEntry } from "./ipc";
   import { t } from "./i18n";
   import { syncIcon } from "./state";
 
@@ -13,7 +13,10 @@
     coldStart,
     keystroke,
     queue,
+    organizations,
+    organization,
     onOpen,
+    onOrganization,
   }: {
     views: ViewEntry[];
     current: string;
@@ -22,7 +25,10 @@
     coldStart: number | null;
     keystroke: number | null;
     queue: QueuedMutation[];
+    organizations: ScopeEntry[];
+    organization: string | null;
     onOpen: (name: string) => void;
+    onOrganization: (login: string | null) => void;
   } = $props();
 </script>
 
@@ -33,6 +39,22 @@
   </header>
 
   <nav>
+    {#if organizations.length > 0}
+      <div class="group">{t("nav.organizations")}</div>
+      <button class="item" aria-current={organization === null} onclick={() => onOrganization(null)}>
+        <Icon name="layout-list" size={13} />
+        <span class="truncate">{t("org.all")}</span>
+        <span class="tally">{organizations.reduce((total, entry) => total + entry.openPullRequests, 0)}</span>
+      </button>
+      {#each organizations as entry (entry.login)}
+        <button class="item" aria-current={organization === entry.login} onclick={() => onOrganization(entry.login)}>
+          <Icon name={entry.isMember ? "user" : "git-branch"} size={13} />
+          <span class="truncate">{entry.displayName ?? entry.login}</span>
+          <span class="tally">{entry.openPullRequests || ""}</span>
+        </button>
+      {/each}
+    {/if}
+
     <div class="group">{t("nav.views")}</div>
     {#each views as view (view.name)}
       <button

@@ -305,6 +305,52 @@ fn locator_of(key: &str) -> Result<(String, String, i64), String> {
     Ok((owner.to_owned(), name.to_owned(), number))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopeEntry {
+    pub login: String,
+    pub display_name: Option<String>,
+    pub open_pull_requests: i64,
+    pub is_member: bool,
+}
+
+pub fn organizations(store: &Store, account_id: i64) -> Result<Vec<ScopeEntry>, String> {
+    let members = store
+        .organizations(account_id)
+        .map_err(|error| error.to_string())?;
+    let owners = store
+        .owners_with_pull_requests()
+        .map_err(|error| error.to_string())?;
+
+    let mut scopes: Vec<ScopeEntry> = members
+        .into_iter()
+        .map(|organization| ScopeEntry {
+            login: organization.login,
+            display_name: organization.display_name,
+            open_pull_requests: organization.open_pull_requests,
+            is_member: true,
+        })
+        .collect();
+    for owner in owners {
+        if scopes.iter().any(|scope| scope.login == owner.login) {
+            continue;
+        }
+        scopes.push(ScopeEntry {
+            login: owner.login,
+            display_name: owner.display_name,
+            open_pull_requests: owner.open_pull_requests,
+            is_member: false,
+        });
+    }
+    scopes.sort_by(|left, right| {
+        right
+            .open_pull_requests
+            .cmp(&left.open_pull_requests)
+            .then(left.login.cmp(&right.login))
+    });
+    Ok(scopes)
+}
+
 pub fn saved_views(store: &Store) -> Result<Vec<ViewEntry>, String> {
     store
         .install_shipped_views()
@@ -330,12 +376,21 @@ pub fn run_query(store: &Store, dsl: &str, viewer: &str) -> Result<Vec<InboxEntr
     Ok(rows.iter().map(InboxEntry::from).collect())
 }
 
-pub fn run_view(store: &Store, name: &str, viewer: &str) -> Result<Vec<InboxEntry>, String> {
+pub fn run_view(
+    store: &Store,
+    name: &str,
+    viewer: &str,
+    scope: Option<&str>,
+) -> Result<Vec<InboxEntry>, String> {
+    run_query(store, &view_query(store, name, scope)?, viewer)
+}
+
+pub fn view_query(store: &Store, name: &str, scope: Option<&str>) -> Result<String, String> {
     let view = store
         .view(name)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| format!("aucune vue nommée « {name} »"))?;
-    run_query(store, &view.query, viewer)
+    Ok(quay_store::organizations::scoped(&view.query, scope))
 }
 
 #[cfg(test)]
@@ -466,7 +521,7 @@ mod tests {
         if let Err(error) = saved_views(&store) {
             panic!("the views must install: {error}");
         }
-        match run_view(&store, "view.to_review", "octocat") {
+        match run_view(&store, "view.to_review", "octocat", None) {
             Ok(entries) => assert!(entries.is_empty()),
             Err(error) => panic!("an empty view is not an error: {error}"),
         }
@@ -496,7 +551,7 @@ mod tests {
     #[test]
     fn an_unknown_view_is_named_in_the_refusal() {
         let (_directory, store) = store();
-        match run_view(&store, "Néant", "octocat") {
+        match run_view(&store, "Néant", "octocat", None) {
             Err(message) => assert!(message.contains("Néant")),
             Ok(_) => panic!("an unknown view must be refused"),
         }

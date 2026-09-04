@@ -39,6 +39,8 @@
   let awaiting: string | null = $state(null);
   let notice: string | null = $state(null);
   let queue: ipc.QueuedMutation[] = $state([]);
+  let organizations: ipc.ScopeEntry[] = $state([]);
+  let organization: string | null = $state(null);
   const confirmation = new Confirmation();
   let sync: SyncState | null = $state(null);
   let coldStart: number | null = $state(null);
@@ -50,7 +52,7 @@
   let scope: Scope = $derived(paletteOpen ? "global" : opened ? "pull_request" : "list");
   let rendered = $derived(windowOf(entries.length, scrollTop, viewport));
   let heading = $derived(t(currentView));
-  let currentQuery = $derived(views.find((view) => view.name === currentView)?.query ?? "");
+  let currentQuery = $state("");
   let reader = new ChordReader([]);
   let bindings: ipc.KeyBinding[] = $state([]);
   let awaitingChord = $derived(
@@ -76,6 +78,7 @@
     const attaching = [
       ipc.onInboxChanged(() => {
         if (currentView) void openView(currentView, false);
+        void refreshOrganizations();
       }),
       ipc.onSyncState((state) => {
         sync = state;
@@ -109,6 +112,7 @@
       failure = String(error);
     }
     await refreshQueue();
+    await refreshOrganizations();
     try {
       sync = await ipc.syncState();
     } catch (error) {
@@ -128,7 +132,8 @@
 
   async function openView(name: string, reset = true) {
     try {
-      const loaded = await ipc.runView(name);
+      const [loaded, query] = await Promise.all([ipc.runView(name), ipc.viewQuery(name)]);
+      currentQuery = query;
       entries = loaded;
       currentView = name;
       if (reset) {
@@ -151,6 +156,30 @@
     try {
       opened = await ipc.pullRequest(entry.key);
       failure = null;
+    } catch (error) {
+      failure = String(error);
+    }
+  }
+
+  async function refreshOrganizations() {
+    try {
+      const [listed, chosen] = await Promise.all([
+        ipc.organizations(),
+        ipc.selectedOrganization(),
+      ]);
+      organizations = listed;
+      organization = chosen;
+    } catch (error) {
+      failure ??= String(error);
+    }
+  }
+
+  async function chooseOrganization(login: string | null) {
+    try {
+      await ipc.selectOrganization(login);
+      organization = login;
+      if (currentView) await openView(currentView);
+      await refreshOrganizations();
     } catch (error) {
       failure = String(error);
     }
@@ -359,7 +388,10 @@
     {queue}
     {coldStart}
     {keystroke}
+    {organizations}
+    {organization}
     onOpen={(name) => openView(name)}
+    onOrganization={(login) => chooseOrganization(login)}
   />
 
   <section class="view">

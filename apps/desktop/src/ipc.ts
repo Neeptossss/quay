@@ -58,7 +58,19 @@ export interface PullRequestEntry extends InboxEntry {
 export const keyMap = (scope: Scope) => invoke<KeyBinding[]>("key_map", { scope });
 export const palette = (needle: string, scope: Scope) =>
   invoke<CommandEntry[]>("palette", { needle, scope });
+export interface ScopeEntry {
+  login: string;
+  displayName: string | null;
+  openPullRequests: number;
+  isMember: boolean;
+}
+
 export const savedViews = () => invoke<ViewEntry[]>("saved_views");
+export const organizations = () => invoke<ScopeEntry[]>("organizations");
+export const selectedOrganization = () => invoke<string | null>("selected_organization");
+export const selectOrganization = (login: string | null) =>
+  invoke<void>("select_organization", { login });
+export const viewQuery = (name: string) => invoke<string>("view_query", { name });
 export const runView = (name: string) => invoke<InboxEntry[]>("run_view", { name });
 export const runQuery = (dsl: string) => invoke<InboxEntry[]>("run_query", { dsl });
 export const pullRequest = (key: string) => invoke<PullRequestEntry | null>("pull_request", { key });
