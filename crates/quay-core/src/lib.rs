@@ -5,6 +5,7 @@ mod change;
 mod mutations;
 mod preload;
 mod priority;
+mod query;
 mod records;
 mod source;
 mod tier;
@@ -16,6 +17,9 @@ pub use preload::{
     speculation_stays_enabled,
 };
 pub use priority::Priority;
+pub use query::{
+    Completion, Qualifier, Query, QueryError, Term, VIEWER, completions, parse as parse_query,
+};
 pub use records::{
     PullRequest, PullRequestSnapshot, PullRequestState, Repository, ReviewComment, ReviewRequest,
     ReviewThread,

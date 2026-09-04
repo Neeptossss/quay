@@ -110,6 +110,53 @@ pub fn age(updated_at: &str, now: OffsetDateTime) -> String {
     }
 }
 
+pub fn query_error(error: &quay_core::QueryError) -> String {
+    match error {
+        quay_core::QueryError::UnknownQualifier { qualifier, closest } => match closest {
+            Some(closest) => format!(
+                "`{qualifier}` n'est pas un qualificateur connu. Vouliez-vous `{closest}:` ?"
+            ),
+            None => format!(
+                "`{qualifier}` n'est pas un qualificateur connu. `quay complete ''` les liste."
+            ),
+        },
+        quay_core::QueryError::UnknownValue {
+            qualifier,
+            value,
+            accepted,
+        } => format!(
+            "`{qualifier}` n'accepte pas `{value}`. Valeurs possibles : {}.",
+            accepted.join(", ")
+        ),
+        quay_core::QueryError::EmptyValue { qualifier } => {
+            format!("`{qualifier}:` attend une valeur. `quay complete '{qualifier}:'` les propose.")
+        }
+        quay_core::QueryError::NegationNotAccepted { qualifier } => {
+            format!("`{qualifier}` ne peut pas être nié : le résultat n'aurait pas de sens.")
+        }
+        quay_core::QueryError::UnclosedQuote => {
+            "Un guillemet ouvert n'est jamais refermé.".to_owned()
+        }
+    }
+}
+
+pub fn store_error(error: &quay_store::StoreError) -> Option<String> {
+    match error {
+        quay_store::StoreError::QualifierNotSupportedYet { qualifier, .. } => Some(format!(
+            "`{qualifier}` fait partie du langage mais ce jalon ne sait pas y répondre : \
+             rien ne stocke encore cette information."
+        )),
+        quay_store::StoreError::QualifierValueNotUnderstood {
+            qualifier,
+            value,
+            expected,
+        } => Some(format!(
+            "`{qualifier}` a reçu `{value}`, il attend la forme `{expected}`."
+        )),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use time::OffsetDateTime;

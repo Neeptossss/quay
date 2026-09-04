@@ -10,66 +10,81 @@
     "viewer_resolved": true
   },
   "machine": "aarch64-macos",
-  "measured_at": "2026-09-04T15:45:42.752704Z",
+  "measured_at": "2026-09-04T16:42:27.629525Z",
   "rows": [
     {
       "cache": "warm",
       "percentiles": {
-        "max": 0.07075,
-        "mean": 0.029979909299999993,
-        "min": 0.024457999999999997,
-        "p50": 0.027917,
-        "p95": 0.040125,
-        "p99": 0.057624999999999996,
+        "max": 0.113292,
+        "mean": 0.028635853400000293,
+        "min": 0.024208,
+        "p50": 0.028292,
+        "p95": 0.033541999999999995,
+        "p99": 0.042249999999999996,
+        "samples": 10000
+      },
+      "query": "compiled_from_the_query_language",
+      "raw_log": "measurements/raw/inbox-real-2026-09-04T164227.629525Z-compiled_from_the_query_language-warm.csv",
+      "rows": 24
+    },
+    {
+      "cache": "warm",
+      "percentiles": {
+        "max": 0.100959,
+        "mean": 0.027671555500000063,
+        "min": 0.023917,
+        "p50": 0.027542,
+        "p95": 0.033459,
+        "p99": 0.04,
         "samples": 10000
       },
       "query": "review_requested_exact",
-      "raw_log": "measurements/raw/inbox-real-2026-09-04T154542.752704Z-review_requested_exact-warm.csv",
+      "raw_log": "measurements/raw/inbox-real-2026-09-04T164227.629525Z-review_requested_exact-warm.csv",
       "rows": 24
     },
     {
       "cache": "cold",
       "percentiles": {
-        "max": 0.068,
-        "mean": 0.04554124000000001,
-        "min": 0.040958999999999995,
-        "p50": 0.045917,
-        "p95": 0.047458,
-        "p99": 0.049416999999999996,
+        "max": 0.070625,
+        "mean": 0.04688498999999999,
+        "min": 0.041208,
+        "p50": 0.046416,
+        "p95": 0.051708,
+        "p99": 0.055375,
         "samples": 100
       },
       "query": "review_requested_exact",
-      "raw_log": "measurements/raw/inbox-real-2026-09-04T154542.752704Z-review_requested_exact-cold.csv",
+      "raw_log": "measurements/raw/inbox-real-2026-09-04T164227.629525Z-review_requested_exact-cold.csv",
       "rows": 24
     },
     {
       "cache": "warm",
       "percentiles": {
-        "max": 0.06025,
-        "mean": 0.025702536199999668,
-        "min": 0.023041,
-        "p50": 0.026166,
-        "p95": 0.02675,
-        "p99": 0.031416,
+        "max": 0.06595799999999999,
+        "mean": 0.02649273139999994,
+        "min": 0.022875,
+        "p50": 0.026292,
+        "p95": 0.032083,
+        "p99": 0.037083,
         "samples": 10000
       },
       "query": "open_with_unresolved_thread_count",
-      "raw_log": "measurements/raw/inbox-real-2026-09-04T154542.752704Z-open_with_unresolved_thread_count-warm.csv",
+      "raw_log": "measurements/raw/inbox-real-2026-09-04T164227.629525Z-open_with_unresolved_thread_count-warm.csv",
       "rows": 34
     },
     {
       "cache": "cold",
       "percentiles": {
-        "max": 0.051165999999999996,
-        "mean": 0.040462050000000006,
-        "min": 0.036708000000000005,
-        "p50": 0.041167,
-        "p95": 0.041916999999999996,
-        "p99": 0.045334000000000006,
+        "max": 0.10437500000000001,
+        "mean": 0.04099672,
+        "min": 0.03625,
+        "p50": 0.040458,
+        "p95": 0.04825,
+        "p99": 0.07070800000000001,
         "samples": 100
       },
       "query": "open_with_unresolved_thread_count",
-      "raw_log": "measurements/raw/inbox-real-2026-09-04T154542.752704Z-open_with_unresolved_thread_count-cold.csv",
+      "raw_log": "measurements/raw/inbox-real-2026-09-04T164227.629525Z-open_with_unresolved_thread_count-cold.csv",
       "rows": 34
     }
   ],

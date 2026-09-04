@@ -3,6 +3,7 @@ use std::path::Path;
 use rusqlite::Connection;
 
 pub const CORRECTED: &str = include_str!("../schema/0001_initial.sql");
+pub const UNIQUE_SAVED_VIEWS: &str = include_str!("../schema/0002_unique_saved_views.sql");
 pub const SPECIFICATION_SECTION_SIX: &str = include_str!("../schema/baseline-section-6.sql");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,7 +166,7 @@ mod tests {
     #[test]
     fn the_corrected_schema_is_created_through_the_migration_runner_and_stamps_its_version() {
         let (_directory, connection) = database(SchemaVariant::Corrected);
-        assert_eq!(crate::migrations::current_version(&connection).unwrap(), 1);
+        assert_eq!(crate::migrations::current_version(&connection).unwrap(), 2);
     }
 
     #[test]

@@ -10,7 +10,6 @@ use quay_forge::{
     read_identity,
 };
 use quay_store::Store;
-use quay_store::inbox::{InboxFilter, InboxQuery};
 use quay_sync::SyncEngine;
 use time::OffsetDateTime;
 
@@ -247,48 +246,111 @@ pub async fn watch(cycles: Option<usize>) -> Outcome {
     }
 }
 
-pub fn inbox() -> Outcome {
-    let store = open_store()?;
-    let login = stored_login(&store)?;
-    let filter = InboxFilter {
-        viewer: login.clone().unwrap_or_default(),
-        ..InboxFilter::default()
-    };
+const DEFAULT_VIEW: &str = "À relire";
+const RESULT_LIMIT: i64 = 200;
 
-    let query = if login.is_some() {
-        InboxQuery::ReviewRequestedExact
-    } else {
-        InboxQuery::OpenWithUnresolvedThreadCount
-    };
-    let started = Instant::now();
-    let rows = store.inbox(query, &filter)?;
-    let requested = started.elapsed();
-
-    let started = Instant::now();
-    let fallback = store.inbox(InboxQuery::OpenWithUnresolvedThreadCount, &filter)?;
-    let everything = started.elapsed();
-
-    let palette = render::Palette::from_env();
-    let now = OffsetDateTime::now_utc();
-    let shown = if rows.is_empty() { &fallback } else { &rows };
-
-    if shown.is_empty() {
+fn render_rows(rows: &[quay_store::inbox::InboxRow], elapsed: std::time::Duration, source: &str) {
+    if rows.is_empty() {
         println!("{}", render::empty_inbox_invitation());
     } else {
         println!("{}", render::header());
-        for row in shown {
+        let palette = render::Palette::from_env();
+        let now = OffsetDateTime::now_utc();
+        for row in rows {
             println!("{}", render::row(row, &palette, now));
         }
     }
-
     println!();
     println!(
-        "{} ligne(s) demandée(s) en {:.3} ms, {} ligne(s) ouverte(s) en {:.3} ms, depuis SQLite",
+        "{} ligne(s) depuis SQLite en {:.3} ms — {source}",
         rows.len(),
-        requested.as_secs_f64() * 1_000.0,
-        fallback.len(),
-        everything.as_secs_f64() * 1_000.0
+        elapsed.as_secs_f64() * 1_000.0
     );
+}
+
+fn run_query(store: &Store, dsl: &str, viewer: &str, source: &str) -> Outcome {
+    let parsed = quay_core::parse_query(dsl).map_err(|error| render::query_error(&error))?;
+    let started = Instant::now();
+    let rows = store
+        .search(&parsed, viewer, RESULT_LIMIT)
+        .map_err(|error| render::store_error(&error).unwrap_or_else(|| error.to_string()))?;
+    let elapsed = started.elapsed();
+    render_rows(&rows, elapsed, source);
+    store.note_navigation_event(
+        "shell",
+        "inbox:list",
+        "cmd:view.open",
+        None,
+        None,
+        now_seconds(),
+    )?;
+    Ok(())
+}
+
+pub fn inbox() -> Outcome {
+    let store = open_store()?;
+    store.install_shipped_views()?;
+    let viewer = stored_login(&store)?.unwrap_or_default();
+    match store.view(DEFAULT_VIEW)? {
+        Some(view) => run_query(
+            &store,
+            &view.query,
+            &viewer,
+            &format!("vue « {} »", view.name),
+        ),
+        None => {
+            Err(format!("la vue « {DEFAULT_VIEW} » a disparu, `quay views` la réinstalle").into())
+        }
+    }
+}
+
+pub fn views() -> Outcome {
+    let store = open_store()?;
+    let installed = store.install_shipped_views()?;
+    if installed > 0 {
+        println!("{installed} vue(s) par défaut installée(s)");
+    }
+    let views = store.views()?;
+    if views.is_empty() {
+        println!("aucune vue sauvegardée");
+        return Ok(());
+    }
+    for view in &views {
+        println!(
+            "{:<24}  {:<5}  {}",
+            view.name,
+            view.shortcut.as_deref().unwrap_or("—"),
+            view.query
+        );
+    }
+    Ok(())
+}
+
+pub fn view(name: &str) -> Outcome {
+    let store = open_store()?;
+    store.install_shipped_views()?;
+    let viewer = stored_login(&store)?.unwrap_or_default();
+    let view = store
+        .view(name)?
+        .ok_or_else(|| format!("aucune vue nommée « {name} », `quay views` les liste"))?;
+    run_query(
+        &store,
+        &view.query,
+        &viewer,
+        &format!("vue « {} »", view.name),
+    )
+}
+
+pub fn query(dsl: &str) -> Outcome {
+    let store = open_store()?;
+    let viewer = stored_login(&store)?.unwrap_or_default();
+    run_query(&store, dsl, &viewer, "requête ponctuelle")
+}
+
+pub fn complete(partial: &str) -> Outcome {
+    for completion in quay_core::completions(partial) {
+        println!("{}", completion.insertion);
+    }
     Ok(())
 }
 

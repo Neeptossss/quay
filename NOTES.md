@@ -961,3 +961,87 @@ préchargement couche 1, boucle. Ce qui reste au M1 est de l'interface : palette
 des touches (§8.2, §8.3), vues sauvegardées avec le DSL (§8.4), et la fenêtre Tauri avec le store
 Svelte. C'est là que les budgets `keystroke_to_pixel`, `cold_start_to_first_paint` et
 `cached_pull_request_navigation` deviendront mesurables.
+
+---
+
+## Session 2026-09-04 (suite) — M1, DSL de vues sauvegardées (§8.4)
+
+### Ce qui a été fait
+
+- **Analyseur du DSL** dans `quay-core`, en logique pure : qualificateurs, négation par `-`, valeurs
+  entre guillemets, texte libre. Les trois requêtes d'exemple du §8.4 sont figées par des tests.
+- **Refus nommés plutôt qu'ignorés en silence.** Le §8.3 dit que rien de découvrable n'échoue : un
+  qualificateur inconnu est refusé **et propose le plus proche**, une valeur hors du jeu accepté est
+  refusée **en listant ce qui est accepté**, un `sort:` nié est refusé parce que le résultat n'aurait
+  pas de sens, un guillemet non refermé est refusé plutôt que de tronquer la requête en silence.
+- **Complétion** : fonction pure qui propose les qualificateurs puis leurs valeurs. Elle vivra
+  derrière la barre de recherche ; elle est déjà testée et exposée par `quay complete`.
+- **Compilateur vers SQL** dans `quay-store`. Toutes les valeurs sont **liées en paramètres**, jamais
+  interpolées ; un test vérifie que le login de l'utilisateur n'apparaît pas dans le SQL produit.
+- **`label:`, `assignee:` et `is:issue` font partie du langage** et sont refusés à la compilation
+  avec la raison : rien ne stocke encore cette information, les issues sont au M3. C'est le §3.7
+  appliqué au langage — visible, refusé, expliqué, plutôt qu'absent ou silencieusement vide.
+- **Vues sauvegardées** avec leurs colonnes, leur tri, leur position et leur raccourci, et **cinq
+  vues livrées par défaut** dans un fichier JSON, conformément au §8.4 qui veut que les « profils
+  métier » ne soient qu'un fichier de vues modifiable. Un test vérifie que **chaque vue livrée
+  s'analyse et se compile** : livrer une entrée découvrable et cassée serait précisément ce que le
+  §8.1 interdit. Un autre vérifie qu'aucune n'entre en conflit de raccourci.
+- L'inbox du binaire passe désormais **par le DSL**, via la vue « À relire ». Les requêtes écrites à
+  la main restent, mais uniquement comme jeu de mesure figé pour J1-b, dont la comparabilité entre
+  exécutions dépend de la stabilité du SQL.
+
+### Une migration, pour de vrai
+
+Le test « deux vues du même nom » a échoué et il avait raison : le §6 ne met **aucune contrainte
+d'unicité sur `saved_view.name`**, alors qu'une vue s'adresse par son nom, ni sur `shortcut`, alors
+que le §8.3 exige qu'aucun raccourci n'entre en conflit. Migration `0002` :
+
+```sql
+CREATE UNIQUE INDEX idx_saved_view_name ON saved_view(name);
+CREATE UNIQUE INDEX idx_saved_view_shortcut ON saved_view(shortcut) WHERE shortcut IS NOT NULL;
+```
+
+Index partiel pour que plusieurs vues puissent n'avoir aucun raccourci. C'est la première migration
+appliquée à une base réelle déjà en version 1, et elle est passée sans intervention.
+
+### Le DSL ne coûte rien
+
+Mesuré sur le jeu réel, même requête canonique, mêmes 24 lignes :
+
+| Chemin | p99 cache chaud |
+|---|---|
+| SQL écrit à la main (`review_requested_exact`) | 0,040 ms |
+| Compilé depuis le DSL | 0,042 ms |
+
+L'écart est dans le bruit. Le langage de requête n'introduit pas de coût mesurable, ce qui lève la
+seule objection sérieuse à en faire le chemin du produit.
+
+### Les erreurs sont rendues dans la langue de l'utilisateur
+
+Les types d'erreur des crates de cœur restent **structurés et en anglais**, comme l'exige le
+`CLAUDE.md` pour le code. C'est la couche de présentation qui les rend en français, avec l'action
+corrective, exactement comme le §3.7 sépare la `Reason` de son affichage :
+
+```
+`auth` n'est pas un qualificateur connu. Vouliez-vous `author:` ?
+`checks` n'accepte pas `red`. Valeurs possibles : success, failing, pending, none.
+`repo` a reçu `acme`, il attend la forme `owner/name`.
+`label` fait partie du langage mais ce jalon ne sait pas y répondre : rien ne stocke encore
+cette information.
+```
+
+### Réserves
+
+- Le tri des vues sauvegardées est porté deux fois : par la colonne `sort` de la table et par le
+  qualificateur `sort:` de la requête. C'est le §6 et le §8.4 qui se recouvrent. Le compilateur ne
+  lit que le qualificateur ; la colonne est conservée telle que le §6 la déclare mais n'a pas de
+  lecteur. À trancher quand l'interface aura besoin de trier une colonne au clic.
+- La complétion propose `@me` pour les qualificateurs de personne mais pas les logins réellement
+  présents en base. Le faire demande de décider si l'on suggère depuis les données locales ou depuis
+  la forge, ce qui est une question d'interface.
+
+### Ce qu'il faut faire ensuite
+
+L'interface : palette de commandes (§8.3), carte des touches (§8.2), et la fenêtre Tauri avec le
+store Svelte. C'est là que les budgets `keystroke_to_pixel`, `cold_start_to_first_paint` et
+`cached_pull_request_navigation` deviennent mesurables.

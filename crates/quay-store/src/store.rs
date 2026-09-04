@@ -235,6 +235,34 @@ impl Store {
         write::save_snapshot(&mut self.connection, account_id, snapshot)
     }
 
+    pub fn search(
+        &self,
+        query: &quay_core::Query,
+        viewer: &str,
+        limit: i64,
+    ) -> Result<Vec<crate::inbox::InboxRow>, StoreError> {
+        let compiled = crate::compile::compile(query, viewer, limit)?;
+        let mut statement = self.connection.prepare_cached(&compiled.sql)?;
+        Ok(statement
+            .query_map(
+                rusqlite::params_from_iter(compiled.parameters.iter()),
+                crate::inbox::read_row,
+            )?
+            .collect::<Result<Vec<crate::inbox::InboxRow>, rusqlite::Error>>()?)
+    }
+
+    pub fn views(&self) -> Result<Vec<crate::views::SavedView>, StoreError> {
+        crate::views::all(&self.connection)
+    }
+
+    pub fn view(&self, name: &str) -> Result<Option<crate::views::SavedView>, StoreError> {
+        crate::views::by_name(&self.connection, name)
+    }
+
+    pub fn install_shipped_views(&self) -> Result<usize, StoreError> {
+        crate::views::install_shipped_if_empty(&self.connection)
+    }
+
     pub fn pull_request_view(
         &self,
         owner: &str,

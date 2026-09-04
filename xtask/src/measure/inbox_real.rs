@@ -57,6 +57,7 @@ pub fn measure(started_at: &str) -> Result<RealInbox, Box<dyn Error>> {
     };
 
     let mut measurements = Vec::new();
+    measurements.extend(measure_compiled_query(started_at, &store, &viewer)?);
     for query in [
         InboxQuery::ReviewRequestedExact,
         InboxQuery::OpenWithUnresolvedThreadCount,
@@ -89,6 +90,31 @@ pub fn measure(started_at: &str) -> Result<RealInbox, Box<dyn Error>> {
         measurements,
         ..shape
     })
+}
+
+fn measure_compiled_query(
+    started_at: &str,
+    store: &Store,
+    viewer: &str,
+) -> Result<Vec<QueryMeasurement>, Box<dyn Error>> {
+    let parsed =
+        quay_core::parse_query("is:pr is:open review-requested:@me -author:@me sort:updated-desc")?;
+    let rows = store.search(&parsed, viewer, 50)?.len();
+
+    let mut warm = Vec::with_capacity(WARM_ITERATIONS);
+    for _ in 0..WARM_ITERATIONS {
+        let started = Instant::now();
+        let result = store.search(&parsed, viewer, 50)?;
+        warm.push(started.elapsed().as_secs_f64() * 1_000.0);
+        black_box(result);
+    }
+    Ok(vec![record(
+        started_at,
+        "compiled_from_the_query_language",
+        "warm",
+        rows,
+        warm,
+    )?])
 }
 
 fn read_shape(store: &Store, viewer: &str) -> Result<RealInbox, Box<dyn Error>> {

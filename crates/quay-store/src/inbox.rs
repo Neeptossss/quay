@@ -157,7 +157,7 @@ pub struct InboxRow {
     pub unresolved_threads: i64,
 }
 
-fn read_row(row: &Row<'_>) -> rusqlite::Result<InboxRow> {
+pub(crate) fn read_row(row: &Row<'_>) -> rusqlite::Result<InboxRow> {
     Ok(InboxRow {
         owner: row.get(0)?,
         name: row.get(1)?,

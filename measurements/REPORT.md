@@ -2,7 +2,7 @@
 
 Ce fichier est généré par `cargo run -p xtask -- report` à partir des logs bruts de `measurements/raw/`. Il ne se modifie pas à la main.
 
-- Généré le : 2026-09-04T16:33:10.190648Z
+- Généré le : 2026-09-04T16:43:13.097247Z
 - Machine : aarch64-macos
 
 ## Budgets du §4
@@ -34,7 +34,7 @@ Ce fichier est généré par `cargo run -p xtask -- report` à partir des logs b
 
 ## Critère de sortie du §9 — l'inbox réelle depuis SQLite
 
-- Mesuré le : 2026-09-04T15:45:42.752704Z
+- Mesuré le : 2026-09-04T16:42:27.629525Z
 - Machine : aarch64-macos
 
 Ce jeu de données est **plus petit** que celui du §4, sur lequel les budgets sont définis : il ne remplace pas J1-b, il montre le produit sur des données réelles.
@@ -50,10 +50,11 @@ Ce jeu de données est **plus petit** que celui du §4, sur lequel les budgets s
 
 | Requête | Cache | Lignes | p50 ms | p95 ms | p99 ms | max ms | Log brut |
 |---|---|---|---|---|---|---|---|
-| `review_requested_exact` | warm | 24 | 0.028 | 0.040 | 0.058 | 0.071 | `measurements/raw/inbox-real-2026-09-04T154542.752704Z-review_requested_exact-warm.csv` |
-| `review_requested_exact` | cold | 24 | 0.046 | 0.047 | 0.049 | 0.068 | `measurements/raw/inbox-real-2026-09-04T154542.752704Z-review_requested_exact-cold.csv` |
-| `open_with_unresolved_thread_count` | warm | 34 | 0.026 | 0.027 | 0.031 | 0.060 | `measurements/raw/inbox-real-2026-09-04T154542.752704Z-open_with_unresolved_thread_count-warm.csv` |
-| `open_with_unresolved_thread_count` | cold | 34 | 0.041 | 0.042 | 0.045 | 0.051 | `measurements/raw/inbox-real-2026-09-04T154542.752704Z-open_with_unresolved_thread_count-cold.csv` |
+| `compiled_from_the_query_language` | warm | 24 | 0.028 | 0.034 | 0.042 | 0.113 | `measurements/raw/inbox-real-2026-09-04T164227.629525Z-compiled_from_the_query_language-warm.csv` |
+| `review_requested_exact` | warm | 24 | 0.028 | 0.033 | 0.040 | 0.101 | `measurements/raw/inbox-real-2026-09-04T164227.629525Z-review_requested_exact-warm.csv` |
+| `review_requested_exact` | cold | 24 | 0.046 | 0.052 | 0.055 | 0.071 | `measurements/raw/inbox-real-2026-09-04T164227.629525Z-review_requested_exact-cold.csv` |
+| `open_with_unresolved_thread_count` | warm | 34 | 0.026 | 0.032 | 0.037 | 0.066 | `measurements/raw/inbox-real-2026-09-04T164227.629525Z-open_with_unresolved_thread_count-warm.csv` |
+| `open_with_unresolved_thread_count` | cold | 34 | 0.040 | 0.048 | 0.071 | 0.104 | `measurements/raw/inbox-real-2026-09-04T164227.629525Z-open_with_unresolved_thread_count-cold.csv` |
 
 ## M0-1 — authentification acceptée par l'endpoint `/notifications`
 
