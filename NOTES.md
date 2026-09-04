@@ -671,3 +671,100 @@ référence. Aucun chiffre de `sync-once` n'alimente `measurements/`.
    affichage depuis SQLite en moins de 5 ms sur un jeu réel.
 2. Boucler le scheduler : rejouer les validateurs entre les ticks pour exercer le 304 gratuit, et
    faire piloter le rythme par `due_for_refresh`.
+
+---
+
+## Session 2026-09-04 (suite) — étape 7, première sortie visible
+
+### Ce qui a été fait
+
+Le §0 dit que le M0 est un spike en ligne de commande et le §9 que l'inbox peut s'afficher « en CLI
+ou dans une fenêtre Tauri, peu importe ». C'est donc une CLI, pas de Tauri, pas de Svelte.
+
+- **`SearchSource`**, seconde implémentation de `EventSource`. `/notifications` ne rend que ce à quoi
+  l'utilisateur est abonné : avec dix notifications l'inbox faisait une ligne, ce qui ne prouve rien.
+  La file de review réelle vient de `search/issues` sur `review-requested:@me` et `author:@me`, ce
+  que le §7.1 appelle « l'inbox, les PR de l'utilisateur ». Le moteur ne connaît toujours que le
+  trait : c'est exactement ce que le §7.5 achetait en posant l'abstraction dès le premier jour, et
+  la seconde source n'a coûté aucune modification du scheduler.
+- **Binaire `quay`** avec quatre commandes : `login` valide un jeton et le dépose dans le trousseau,
+  `sync` rafraîchit et écrit dans SQLite, `inbox` affiche depuis SQLite, `status` rend le quota, les
+  capacités et l'état local.
+- **Rendu dense** conforme au §8.5 : une ligne par pull request, colonnes fixes, et la couleur
+  réservée à l'encodage de l'état de CI et de review, jamais à la décoration. `NO_COLOR` respecté.
+  Écran vide : une invitation à agir, pas une illustration.
+- La base vit dans l'emplacement de données du système, surchargeable par `QUAY_DB`.
+
+### Le critère de sortie du §9
+
+> « l'inbox de review réelle, multi-repos, s'affiche depuis SQLite en moins de 5 ms »
+
+**Tenu.** Mesuré par `xtask measure inbox-real`, logs bruts dans `measurements/raw/`.
+
+| | |
+|---|---|
+| Dépôts synchronisés | 14 |
+| Pull requests ouvertes | 34 |
+| Reviews demandées à l'utilisateur | 24 |
+| **Dépôts distincts dans l'inbox** | **8** |
+| `review_requested_exact`, p99 cache chaud | **0,058 ms** |
+| `review_requested_exact`, p99 cache froid | 0,049 ms |
+
+0,058 ms contre 5 ms de budget. **Ce jeu réel est plus petit que celui du §4** (14 dépôts et 34 PR
+ouvertes contre 20 et 300) : il montre le produit sur des données vraies, il ne remplace pas J1-b,
+qui reste l'instrument du budget `inbox_query`. Le rapport généré le dit à cet endroit précis.
+
+### Le régime permanent, mesuré
+
+Trois `quay sync` consécutifs :
+
+| Tick | Signaux | Déjà à jour | Récupérées | Requêtes | Points | Révalidations gratuites |
+|---|---|---|---|---|---|---|
+| 1 | 44 | 1 | 43 | 48 | 48 | 0 |
+| 2 | 34 | 34 | 0 | 5 | 4 | 1 |
+| 3 | 34 | 34 | 0 | 5 | 4 | 1 |
+
+**Le 304 gratuit de M0-1 est maintenant exercé de bout en bout** : le tick de régime permanent coûte
+quatre points de quota, dont zéro pour `/notifications`. Les 34 signaux sont tous écartés par la
+comparaison de fraîcheur avant toute sortie réseau, ce qui est la raison d'être de `stale_after`.
+
+Projection non mesurée : à un tick par minute, quatre points par tick donnent 240 requêtes par
+heure, très en dessous du plafond de 1 500 du §7.2. C'est une **projection**, pas une mesure : le
+budget `github_quota_per_hour` reste `MISSING` tant que la boucle n'aura pas tourné une heure.
+
+### Vérifications plutôt que suppositions
+
+L'inbox rend 24 lignes alors que 34 PR sont ouvertes. Vérifié dans la base plutôt que déduit :
+24 lignes de `review_request` nomment l'utilisateur, sur 8 dépôts distincts, et 10 des 34 PR
+ouvertes ont l'utilisateur pour auteur, que le filtre canonique du §8.4 exclut. Les deux chiffres se
+recoupent.
+
+### Un écart entre mon dataset synthétique et la réalité
+
+Les payloads bruts réellement stockés pèsent **47 Ko pour 43 pull requests, soit environ 1,1 Ko
+chacun**. Mon générateur de J1-b en met **3 Ko**. Le dataset synthétique est donc plus pessimiste
+que la réalité sur cette dimension, ce qui **surestime** le gain mesuré du déplacement de `raw` hors
+de `pull_request`. La correction reste bonne, son bénéfice est simplement plus faible qu'annoncé aux
+tailles réelles. À noter que les PR observées sont majoritairement des montées de version
+automatiques, sans threads : un dépôt à revue dense donnerait des payloads plus lourds. Ni l'un ni
+l'autre n'est mesuré à grande échelle, et le générateur n'est pas ajusté sur un échantillon de 43
+lignes.
+
+### Réserves
+
+- `SearchSource` tape `search/issues`, qui a son **propre seau de rate limit** (30 requêtes par
+  minute en authentifié), que le gouverneur ne modélise pas : il ne connaît que le seau primaire lu
+  dans les en-têtes. Deux requêtes par tick sont très en dessous, mais le jour où la spéculation
+  ajoutera des recherches, il faudra un compteur par seau.
+- Le tier hot du §7.1 n'a toujours pas de consommateur : rien n'est « à l'écran » dans une CLI qui
+  rend et s'arrête. Le scheduler continu et le suivi du focus arrivent avec l'interface.
+- `quay sync` fait un tick et rend la main. La boucle du §7.1 avec `due_for_refresh` pour cadence
+  n'est pas branchée.
+
+### Ce qu'il faut faire ensuite
+
+Le jour 1 du §9 est terminé, ses sept étapes sont franchies et son critère de sortie est tenu et
+mesuré. La suite est le M1 : file de mutations optimistes (§7.3), préchargement couche 1 (§7.6),
+palette de commandes et carte des touches (§8.2 et §8.3), vues sauvegardées avec le DSL (§8.4), et
+l'interface Tauri. Trancher avant : la question M0-1 laissée ouverte, et le `synchronous = NORMAL`
+du §6 au regard des invariants de crash du §7.3.

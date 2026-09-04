@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -17,10 +17,37 @@ pub fn epoch_seconds(rfc3339: &str) -> Option<i64> {
         .map(|moment| moment.unix_timestamp())
 }
 
+#[derive(Clone, Default)]
+pub struct SharedValidators {
+    cell: Arc<Mutex<Option<CacheValidators>>>,
+}
+
+impl SharedValidators {
+    pub fn holding(validators: Option<CacheValidators>) -> Self {
+        Self {
+            cell: Arc::new(Mutex::new(validators)),
+        }
+    }
+
+    pub fn current(&self) -> Option<CacheValidators> {
+        match self.cell.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        }
+    }
+
+    fn replace(&self, validators: CacheValidators) {
+        match self.cell.lock() {
+            Ok(mut guard) => *guard = Some(validators),
+            Err(poisoned) => *poisoned.into_inner() = Some(validators),
+        }
+    }
+}
+
 pub struct PollingSource {
     governor: Arc<RateGovernor>,
     endpoint: String,
-    validators: Option<CacheValidators>,
+    validators: SharedValidators,
     interval: Duration,
     last_status: Option<u16>,
     last_error: Option<String>,
@@ -28,29 +55,26 @@ pub struct PollingSource {
 
 impl PollingSource {
     pub fn new(governor: Arc<RateGovernor>, api_base: &str) -> Self {
+        Self::sharing(governor, api_base, SharedValidators::default())
+    }
+
+    pub fn sharing(
+        governor: Arc<RateGovernor>,
+        api_base: &str,
+        validators: SharedValidators,
+    ) -> Self {
         Self {
             governor,
             endpoint: format!("{}/notifications", api_base.trim_end_matches('/')),
-            validators: None,
+            validators,
             interval: Tier::Warm.refresh_interval(),
             last_status: None,
             last_error: None,
         }
     }
 
-    pub fn resuming_from(
-        governor: Arc<RateGovernor>,
-        api_base: &str,
-        validators: Option<CacheValidators>,
-    ) -> Self {
-        Self {
-            validators,
-            ..Self::new(governor, api_base)
-        }
-    }
-
-    pub fn validators(&self) -> Option<&CacheValidators> {
-        self.validators.as_ref()
+    pub fn validators(&self) -> SharedValidators {
+        self.validators.clone()
     }
 
     pub fn interval(&self) -> Duration {
@@ -70,7 +94,7 @@ impl PollingSource {
 impl EventSource for PollingSource {
     async fn next(&mut self) -> Vec<ChangeSignal> {
         let request = OutboundRequest::rest_read(&self.endpoint, Priority::Warm)
-            .revalidating(self.validators.clone());
+            .revalidating(self.validators.current());
         let response = match self.governor.send(request).await {
             Ok(response) => response,
             Err(error) => {
@@ -83,7 +107,7 @@ impl EventSource for PollingSource {
         self.last_status = Some(response.status);
         self.interval = Tier::Warm.interval_respecting(response.poll_interval);
         if let Some(validators) = response.validators.clone() {
-            self.validators = Some(validators);
+            self.validators.replace(validators);
         }
 
         if response.is_not_modified() {

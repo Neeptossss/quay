@@ -1708,7 +1708,12 @@ name = "quay-app"
 version = "0.1.0"
 dependencies = [
  "quay-core",
+ "quay-forge",
+ "quay-store",
  "quay-sync",
+ "time",
+ "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]

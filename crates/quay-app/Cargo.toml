@@ -5,6 +5,15 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[[bin]]
+name = "quay"
+path = "src/main.rs"
+
 [dependencies]
 quay-core.workspace = true
+quay-forge.workspace = true
+quay-store.workspace = true
 quay-sync.workspace = true
+time.workspace = true
+tokio.workspace = true
+tracing-subscriber.workspace = true

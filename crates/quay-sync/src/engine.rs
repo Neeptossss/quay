@@ -124,32 +124,33 @@ impl SyncEngine {
             .map_err(|error| format!("{}: {error}", signal.entity.key))?;
         Ok(Outcome::Stored)
     }
+}
 
-    pub fn remember_notification_validators(
-        &self,
-        validators: Option<&CacheValidators>,
-    ) -> Result<(), SyncError> {
-        let fetched_at = now_seconds();
-        let entry = CacheEntry {
-            key: "notifications".to_owned(),
-            etag: validators.and_then(|validators| validators.etag.clone()),
-            last_modified: validators.and_then(|validators| validators.last_modified.clone()),
-            fetched_at,
-            stale_after: fetched_at + Tier::Warm.refresh_interval().as_secs() as i64,
-            tier: Tier::Warm,
-        };
-        Ok(self.store.remember_freshness(&entry)?)
-    }
+pub const NOTIFICATIONS_KEY: &str = "notifications";
 
-    pub fn notification_validators(&self) -> Result<Option<CacheValidators>, SyncError> {
-        Ok(self
-            .store
-            .freshness("notifications")?
-            .map(|entry| CacheValidators {
-                etag: entry.etag,
-                last_modified: entry.last_modified,
-            }))
-    }
+pub fn notification_validators(store: &Store) -> Result<Option<CacheValidators>, SyncError> {
+    Ok(store
+        .freshness(NOTIFICATIONS_KEY)?
+        .map(|entry| CacheValidators {
+            etag: entry.etag,
+            last_modified: entry.last_modified,
+        }))
+}
+
+pub fn remember_notification_validators(
+    store: &Store,
+    validators: Option<&CacheValidators>,
+) -> Result<(), SyncError> {
+    let fetched_at = now_seconds();
+    let entry = CacheEntry {
+        key: NOTIFICATIONS_KEY.to_owned(),
+        etag: validators.and_then(|validators| validators.etag.clone()),
+        last_modified: validators.and_then(|validators| validators.last_modified.clone()),
+        fetched_at,
+        stale_after: fetched_at + Tier::Warm.refresh_interval().as_secs() as i64,
+        tier: Tier::Warm,
+    };
+    Ok(store.remember_freshness(&entry)?)
 }
 
 enum Outcome {

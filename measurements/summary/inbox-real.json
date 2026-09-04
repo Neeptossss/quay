@@ -1,0 +1,77 @@
+{
+  "dataset": {
+    "database_file": "quay.db",
+    "distinct_repositories_in_inbox": 8,
+    "open_pull_requests": 34,
+    "repositories": 14,
+    "review_comments": 23,
+    "review_requests_for_viewer": 24,
+    "review_threads": 23,
+    "viewer_resolved": true
+  },
+  "machine": "aarch64-macos",
+  "measured_at": "2026-09-04T15:45:42.752704Z",
+  "rows": [
+    {
+      "cache": "warm",
+      "percentiles": {
+        "max": 0.07075,
+        "mean": 0.029979909299999993,
+        "min": 0.024457999999999997,
+        "p50": 0.027917,
+        "p95": 0.040125,
+        "p99": 0.057624999999999996,
+        "samples": 10000
+      },
+      "query": "review_requested_exact",
+      "raw_log": "measurements/raw/inbox-real-2026-09-04T154542.752704Z-review_requested_exact-warm.csv",
+      "rows": 24
+    },
+    {
+      "cache": "cold",
+      "percentiles": {
+        "max": 0.068,
+        "mean": 0.04554124000000001,
+        "min": 0.040958999999999995,
+        "p50": 0.045917,
+        "p95": 0.047458,
+        "p99": 0.049416999999999996,
+        "samples": 100
+      },
+      "query": "review_requested_exact",
+      "raw_log": "measurements/raw/inbox-real-2026-09-04T154542.752704Z-review_requested_exact-cold.csv",
+      "rows": 24
+    },
+    {
+      "cache": "warm",
+      "percentiles": {
+        "max": 0.06025,
+        "mean": 0.025702536199999668,
+        "min": 0.023041,
+        "p50": 0.026166,
+        "p95": 0.02675,
+        "p99": 0.031416,
+        "samples": 10000
+      },
+      "query": "open_with_unresolved_thread_count",
+      "raw_log": "measurements/raw/inbox-real-2026-09-04T154542.752704Z-open_with_unresolved_thread_count-warm.csv",
+      "rows": 34
+    },
+    {
+      "cache": "cold",
+      "percentiles": {
+        "max": 0.051165999999999996,
+        "mean": 0.040462050000000006,
+        "min": 0.036708000000000005,
+        "p50": 0.041167,
+        "p95": 0.041916999999999996,
+        "p99": 0.045334000000000006,
+        "samples": 100
+      },
+      "query": "open_with_unresolved_thread_count",
+      "raw_log": "measurements/raw/inbox-real-2026-09-04T154542.752704Z-open_with_unresolved_thread_count-cold.csv",
+      "rows": 34
+    }
+  ],
+  "scenario": "inbox-real"
+}

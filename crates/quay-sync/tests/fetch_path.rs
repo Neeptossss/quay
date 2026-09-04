@@ -392,10 +392,12 @@ async fn the_inbox_validators_survive_a_round_trip_through_the_store() {
         etag: Some("W/\"inbox-1\"".to_owned()),
         last_modified: None,
     };
-    if let Err(error) = engine.remember_notification_validators(Some(&validators)) {
+    if let Err(error) =
+        quay_sync::remember_notification_validators(engine.store(), Some(&validators))
+    {
         panic!("the validators must be stored: {error}");
     }
-    match engine.notification_validators() {
+    match quay_sync::notification_validators(engine.store()) {
         Ok(Some(loaded)) => assert_eq!(loaded.etag.as_deref(), Some("W/\"inbox-1\"")),
         other => panic!("the validators must come back, got {other:?}"),
     }

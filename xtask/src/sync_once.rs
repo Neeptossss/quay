@@ -39,8 +39,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     let account_id =
         store.remember_account("api.github.com", &identity.login, "pat_classic", "keychain")?;
 
-    let validators = None;
-    let source = PollingSource::resuming_from(governor.clone(), API, validators);
+    let source = PollingSource::new(governor.clone(), API);
     let mut engine =
         SyncEngine::new(store, governor.clone(), API, account_id).listening_to(Box::new(source));
 

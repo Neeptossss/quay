@@ -20,6 +20,7 @@ pub fn generate() -> Result<PathBuf, Box<dyn Error>> {
     writeln!(page, "- Machine : {}\n", crate::machine())?;
 
     write_budgets(&mut page)?;
+    write_inbox_real(&mut page)?;
     write_m0_1(&mut page)?;
     write_j1a(&mut page)?;
     write_j1b(&mut page)?;
@@ -70,6 +71,79 @@ fn write_budgets(page: &mut String) -> Result<(), Box<dyn Error>> {
             measured,
             status.verdict.label(),
             raw_log
+        )?;
+    }
+    writeln!(page)?;
+    Ok(())
+}
+
+fn write_inbox_real(page: &mut String) -> Result<(), Box<dyn Error>> {
+    writeln!(
+        page,
+        "## Critère de sortie du §9 — l'inbox réelle depuis SQLite\n"
+    )?;
+    let Some(summary) = load("inbox-real") else {
+        writeln!(
+            page,
+            "Pas encore mesuré. Synchroniser avec `quay sync` puis lancer \
+             `QUAY_DB=... cargo run -p xtask -- measure inbox-real`.\n"
+        )?;
+        return Ok(());
+    };
+
+    writeln!(
+        page,
+        "- Mesuré le : {}",
+        text(&summary, "/measured_at", "inconnu")
+    )?;
+    writeln!(
+        page,
+        "- Machine : {}\n",
+        text(&summary, "/machine", "inconnue")
+    )?;
+    writeln!(
+        page,
+        "Ce jeu de données est **plus petit** que celui du §4, sur lequel les budgets sont \
+         définis : il ne remplace pas J1-b, il montre le produit sur des données réelles.\n"
+    )?;
+
+    writeln!(page, "| Grandeur du jeu réel | Valeur |")?;
+    writeln!(page, "|---|---|")?;
+    for (label, pointer) in [
+        ("Dépôts synchronisés", "/dataset/repositories"),
+        ("Pull requests ouvertes", "/dataset/open_pull_requests"),
+        ("Threads de review", "/dataset/review_threads"),
+        ("Commentaires de review", "/dataset/review_comments"),
+        (
+            "Reviews demandées à l'utilisateur",
+            "/dataset/review_requests_for_viewer",
+        ),
+        (
+            "Dépôts distincts dans l'inbox",
+            "/dataset/distinct_repositories_in_inbox",
+        ),
+    ] {
+        writeln!(page, "| {label} | {} |", number(&summary, pointer))?;
+    }
+    writeln!(page)?;
+
+    writeln!(
+        page,
+        "| Requête | Cache | Lignes | p50 ms | p95 ms | p99 ms | max ms | Log brut |"
+    )?;
+    writeln!(page, "|---|---|---|---|---|---|---|---|")?;
+    for row in &rows(&summary) {
+        writeln!(
+            page,
+            "| `{}` | {} | {} | {:.3} | {:.3} | {:.3} | {:.3} | `{}` |",
+            text(row, "/query", "?"),
+            text(row, "/cache", "?"),
+            number(row, "/rows"),
+            float(row, "/percentiles/p50"),
+            float(row, "/percentiles/p95"),
+            float(row, "/percentiles/p99"),
+            float(row, "/percentiles/max"),
+            text(row, "/raw_log", "?")
         )?;
     }
     writeln!(page)?;

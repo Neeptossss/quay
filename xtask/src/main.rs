@@ -29,6 +29,7 @@ fn main() -> ExitCode {
     match (command, argument) {
         (Some("budgets"), _) => budgets_command(),
         (Some("measure"), Some("m0-1")) => measure_command(Scenario::M01),
+        (Some("measure"), Some("inbox-real")) => measure_command(Scenario::InboxReal),
         (Some("measure"), Some("j1a")) => measure_command(Scenario::J1a),
         (Some("measure"), Some("j1b")) => measure_command(Scenario::J1b),
         (Some("measure"), Some("all")) => measure_command(Scenario::All),
@@ -39,6 +40,7 @@ fn main() -> ExitCode {
 }
 
 enum Scenario {
+    InboxReal,
     M01,
     J1a,
     J1b,
@@ -49,6 +51,7 @@ fn usage() -> ExitCode {
     eprintln!("usage: cargo run -p xtask -- <command>");
     eprintln!("  budgets        check every performance budget of the specification");
     eprintln!("  measure m0-1   probe which authentication the notifications endpoint accepts");
+    eprintln!("  measure inbox-real  time the inbox against the database the quay binary filled");
     eprintln!("  measure j1a    measure the GraphQL pull request detail breaking point");
     eprintln!("  measure j1b    measure the inbox query against the reference dataset");
     eprintln!("  measure all    run both measurements");
@@ -118,6 +121,22 @@ fn measure_command(scenario: Scenario) -> ExitCode {
             }
             Err(error) => {
                 eprintln!("J1-b failed: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    if matches!(scenario, Scenario::InboxReal) {
+        match measure::inbox_real::measure(&started_at) {
+            Ok(inbox) => {
+                let summary = measure::inbox_real::summary(&inbox, &started_at);
+                if let Err(error) = measure::write_scenario_summary("inbox-real", summary) {
+                    eprintln!("the real inbox summary could not be written: {error}");
+                    return ExitCode::FAILURE;
+                }
+            }
+            Err(error) => {
+                eprintln!("the real inbox measurement failed: {error}");
                 return ExitCode::FAILURE;
             }
         }
