@@ -237,6 +237,12 @@ témoin, le schéma corrigé est dans `0001_initial.sql`, et J1-b mesure désorm
 sur le même dataset déterministe. Un test vérifie que les deux schémas reçoivent exactement les
 mêmes pull requests, sans quoi la comparaison ne voudrait rien dire.
 
+Traçabilité : le jeu de requêtes ayant changé, les logs bruts de J1-b de l'entrée précédente sont
+remplacés dans le répertoire de travail. Ils restent lisibles dans le commit
+`Set up the workspace, sync abstractions and the J1 measurements`, qui est leur seule adresse
+désormais. Les chiffres de l'entrée précédente ne sont donc pas orphelins, ils changent seulement
+de point d'accès.
+
 ### Résultat de la comparaison
 
 p99 en millisecondes, cache chaud, dataset de référence puis ×10 et ×100.
