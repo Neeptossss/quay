@@ -2,8 +2,12 @@ use rusqlite::{Connection, params};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use crate::schema::SchemaVariant;
+
 const RAW_PAYLOAD_BYTES: usize = 3_072;
 const COMMENTS_PER_THREAD: usize = 4;
+const REVIEWERS_PER_PULL_REQUEST: usize = 3;
+const VIEWER_REVIEW_REQUEST_EVERY: usize = 3;
 const OWNERS: [&str; 4] = ["acme", "acme-infra", "acme-labs", "contoso"];
 const AUTHORS: [&str; 8] = [
     "avery", "blake", "casey", "devon", "emery", "finley", "harper", "jordan",
@@ -123,7 +127,11 @@ fn spread_timestamp(base: OffsetDateTime, rank: usize, total: usize) -> String {
     moment.format(&Rfc3339).unwrap_or_else(|_| String::new())
 }
 
-pub fn seed(connection: &mut Connection, shape: &DatasetShape) -> rusqlite::Result<()> {
+pub fn seed(
+    connection: &mut Connection,
+    shape: &DatasetShape,
+    variant: SchemaVariant,
+) -> rusqlite::Result<()> {
     let mut rng = DeterministicRng::new(shape.seed);
     let base =
         OffsetDateTime::from_unix_timestamp(1_788_000_000).unwrap_or(OffsetDateTime::UNIX_EPOCH);
@@ -152,13 +160,29 @@ pub fn seed(connection: &mut Connection, shape: &DatasetShape) -> rusqlite::Resu
 
     let total_pull_requests = shape.pull_requests();
     {
-        let mut insert_pull_request = transaction.prepare(
+        let payload_is_separate = variant.stores_payload_outside_the_pull_request_row();
+        let mut insert_pull_request = transaction.prepare(if payload_is_separate {
+            "INSERT INTO pull_request (
+                 id, repo_id, number, node_id, title, state, is_draft, author,
+                 base_ref, head_sha, review_state, checks_state, mergeable, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'main', ?9, ?10, ?11, 'MERGEABLE', ?12)"
+        } else {
             "INSERT INTO pull_request (
                  id, repo_id, number, node_id, title, state, is_draft, author,
                  base_ref, head_sha, review_state, checks_state, mergeable, updated_at, raw)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'main', ?9, ?10, ?11, 'MERGEABLE', ?12, ?13)",
-        )?;
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'main', ?9, ?10, ?11, 'MERGEABLE', ?12, ?13)"
+        })?;
+        let mut insert_payload = if payload_is_separate {
+            Some(
+                transaction
+                    .prepare("INSERT INTO pull_request_payload (pr_id, raw) VALUES (?1, ?2)")?,
+            )
+        } else {
+            None
+        };
+
         for pull_request_index in 0..total_pull_requests {
+            let identifier = pull_request_index as i64 + 1;
             let repo_id = (pull_request_index % shape.repos) as i64 + 1;
             let state = if pull_request_index < shape.open_pull_requests {
                 "open"
@@ -170,21 +194,76 @@ pub fn seed(connection: &mut Connection, shape: &DatasetShape) -> rusqlite::Resu
             } else {
                 rng.pick(&AUTHORS)
             };
-            insert_pull_request.execute(params![
-                pull_request_index as i64 + 1,
-                repo_id,
-                pull_request_index as i64 / shape.repos as i64 + 1,
-                format!("PR_node{pull_request_index}"),
-                format!("Refactor the {} path", rng.pick(&AUTHORS)),
-                state,
-                i64::from(pull_request_index % 11 == 0),
-                author,
-                rng.hex(40),
-                rng.pick(&REVIEW_STATES),
-                rng.pick(&CHECKS_STATES),
-                spread_timestamp(base, pull_request_index, total_pull_requests),
-                rng.bytes(RAW_PAYLOAD_BYTES),
-            ])?;
+            let number = pull_request_index as i64 / shape.repos as i64 + 1;
+            let node_id = format!("PR_node{pull_request_index}");
+            let title = format!("Refactor the {} path", rng.pick(&AUTHORS));
+            let is_draft = i64::from(pull_request_index % 11 == 0);
+            let head_sha = rng.hex(40);
+            let review_state = *rng.pick(&REVIEW_STATES);
+            let checks_state = *rng.pick(&CHECKS_STATES);
+            let updated_at = spread_timestamp(base, pull_request_index, total_pull_requests);
+            let payload = rng.bytes(RAW_PAYLOAD_BYTES);
+
+            match insert_payload.as_mut() {
+                Some(insert_payload) => {
+                    insert_pull_request.execute(params![
+                        identifier,
+                        repo_id,
+                        number,
+                        node_id,
+                        title,
+                        state,
+                        is_draft,
+                        author,
+                        head_sha,
+                        review_state,
+                        checks_state,
+                        updated_at,
+                    ])?;
+                    insert_payload.execute(params![identifier, payload])?;
+                }
+                None => {
+                    insert_pull_request.execute(params![
+                        identifier,
+                        repo_id,
+                        number,
+                        node_id,
+                        title,
+                        state,
+                        is_draft,
+                        author,
+                        head_sha,
+                        review_state,
+                        checks_state,
+                        updated_at,
+                        payload,
+                    ])?;
+                }
+            }
+        }
+    }
+
+    if variant.records_review_requests() {
+        let mut insert_review_request = transaction.prepare(
+            "INSERT INTO review_request (pr_id, reviewer, is_team, requested_at)
+             VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        for pull_request_index in 0..shape.open_pull_requests {
+            let identifier = pull_request_index as i64 + 1;
+            let requested_at = spread_timestamp(base, pull_request_index, total_pull_requests);
+            let mut requested: Vec<&str> = Vec::new();
+            if pull_request_index % VIEWER_REVIEW_REQUEST_EVERY == 0 {
+                requested.push(shape.viewer.as_str());
+            }
+            while requested.len() < REVIEWERS_PER_PULL_REQUEST {
+                let candidate = *rng.pick(&AUTHORS);
+                if !requested.contains(&candidate) {
+                    requested.push(candidate);
+                }
+            }
+            for reviewer in requested {
+                insert_review_request.execute(params![identifier, reviewer, 0i64, requested_at])?;
+            }
         }
     }
 
@@ -260,12 +339,19 @@ pub fn seed(connection: &mut Connection, shape: &DatasetShape) -> rusqlite::Resu
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::{DatasetShape, DeterministicRng, seed};
-    use crate::schema;
+    use crate::schema::{self, SchemaVariant};
 
     fn seeded(shape: &DatasetShape) -> (tempfile::TempDir, rusqlite::Connection) {
+        seeded_on(shape, SchemaVariant::Corrected)
+    }
+
+    fn seeded_on(
+        shape: &DatasetShape,
+        variant: SchemaVariant,
+    ) -> (tempfile::TempDir, rusqlite::Connection) {
         let directory = tempfile::tempdir().unwrap();
-        let mut connection = schema::create(&directory.path().join("quay.db")).unwrap();
-        seed(&mut connection, shape).unwrap();
+        let mut connection = schema::create(&directory.path().join("quay.db"), variant).unwrap();
+        seed(&mut connection, shape, variant).unwrap();
         (directory, connection)
     }
 
@@ -303,6 +389,69 @@ mod tests {
                 .unwrap()
         };
         assert_eq!(digest(&first), digest(&second));
+    }
+
+    #[test]
+    fn both_schemas_receive_the_same_pull_requests_so_they_can_be_compared() {
+        let shape = DatasetShape::reference();
+        let digest = |connection: &rusqlite::Connection| -> String {
+            connection
+                .query_row(
+                    "SELECT group_concat(node_id || head_sha || title || updated_at, '|')
+                     FROM pull_request ORDER BY id",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap()
+        };
+        let (_baseline_directory, baseline) =
+            seeded_on(&shape, SchemaVariant::SpecificationSectionSix);
+        let (_corrected_directory, corrected) = seeded_on(&shape, SchemaVariant::Corrected);
+        assert_eq!(digest(&baseline), digest(&corrected));
+    }
+
+    #[test]
+    fn the_corrected_schema_stores_one_payload_per_pull_request() {
+        let shape = DatasetShape::reference();
+        let (_directory, connection) = seeded_on(&shape, SchemaVariant::Corrected);
+        assert_eq!(count(&connection, "pull_request_payload"), 300);
+        let orphans: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM pull_request pr
+                 LEFT JOIN pull_request_payload p ON p.pr_id = pr.id
+                 WHERE p.pr_id IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(orphans, 0);
+    }
+
+    #[test]
+    fn the_viewer_is_a_requested_reviewer_on_a_third_of_the_open_pull_requests() {
+        let shape = DatasetShape::reference();
+        let (_directory, connection) = seeded_on(&shape, SchemaVariant::Corrected);
+        let requested: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM review_request WHERE reviewer = 'viewer'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(requested, 100);
+        assert_eq!(count(&connection, "review_request"), 900);
+    }
+
+    #[test]
+    fn the_baseline_schema_records_no_review_request() {
+        let shape = DatasetShape::reference();
+        let (_directory, connection) = seeded_on(&shape, SchemaVariant::SpecificationSectionSix);
+        assert!(
+            connection
+                .query_row("SELECT COUNT(*) FROM review_request", [], |row| row
+                    .get::<_, i64>(0))
+                .is_err()
+        );
     }
 
     #[test]

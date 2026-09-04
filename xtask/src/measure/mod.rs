@@ -32,6 +32,7 @@ pub fn j1b_summary(measurements: &[j1b::QueryMeasurement], started_at: &str) -> 
         "rows": measurements
             .iter()
             .map(|measurement| json!({
+                "schema": measurement.schema,
                 "dataset": measurement.dataset,
                 "scale": measurement.scale,
                 "query": measurement.query,

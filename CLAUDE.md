@@ -149,7 +149,7 @@ Si une contrainte externe doit être documentée (une bizarrerie de l'API GitHub
 
 **Fonctions.** Si tu ressens le besoin d'expliquer un bloc, extrais-le dans une fonction dont le nom est cette explication.
 
-**Messages de commit** à l'impératif, en anglais, sujet sous 72 caractères.
+**Messages de commit** à l'impératif, en anglais, sujet sous 72 caractères, NE PAS INCLURE DE Co-Authored by. LE MESSAGE DE COMMIT NE DOIT PAS INCLURE DE NOM DE MODELE OU AUTRE.
 
 Pas de dépendance ajoutée sans justification d'une ligne dans `NOTES.md`.
 

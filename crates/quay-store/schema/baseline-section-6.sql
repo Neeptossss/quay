@@ -36,25 +36,11 @@ CREATE TABLE pull_request (
   checks_state  TEXT,
   mergeable     TEXT,
   updated_at    TEXT NOT NULL,
+  raw           BLOB,
   UNIQUE(repo_id, number)
 );
 
 CREATE INDEX idx_pr_inbox ON pull_request(state, updated_at DESC);
-
-CREATE TABLE pull_request_payload (
-  pr_id         INTEGER PRIMARY KEY REFERENCES pull_request(id) ON DELETE CASCADE,
-  raw           BLOB NOT NULL
-);
-
-CREATE TABLE review_request (
-  pr_id         INTEGER NOT NULL REFERENCES pull_request(id) ON DELETE CASCADE,
-  reviewer      TEXT NOT NULL,
-  is_team       INTEGER NOT NULL DEFAULT 0,
-  requested_at  TEXT NOT NULL,
-  PRIMARY KEY (pr_id, reviewer, is_team)
-) WITHOUT ROWID;
-
-CREATE INDEX idx_review_request_by_reviewer ON review_request(reviewer, pr_id);
 
 CREATE TABLE review_thread (
   id            INTEGER PRIMARY KEY,
@@ -69,8 +55,6 @@ CREATE TABLE review_thread (
   is_outdated   INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE INDEX idx_thread_by_pull_request ON review_thread(pr_id, is_resolved);
-
 CREATE TABLE review_comment (
   id            INTEGER PRIMARY KEY,
   thread_id     INTEGER NOT NULL REFERENCES review_thread(id) ON DELETE CASCADE,
@@ -79,8 +63,6 @@ CREATE TABLE review_comment (
   body          TEXT NOT NULL,
   created_at    TEXT NOT NULL
 );
-
-CREATE INDEX idx_comment_by_thread ON review_comment(thread_id);
 
 CREATE TABLE resource_cache (
   key           TEXT PRIMARY KEY,

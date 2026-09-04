@@ -1,5 +1,7 @@
 use rusqlite::{Connection, Row};
 
+use crate::schema::SchemaVariant;
+
 const OPEN_ACROSS_TRACKED_REPOS: &str = "\
 SELECT r.owner, r.name, pr.number, pr.title, pr.is_draft, pr.author,
        pr.review_state, pr.checks_state, pr.updated_at, 0
@@ -31,6 +33,20 @@ WHERE pr.state = 'open' AND r.is_tracked = 1
 ORDER BY pr.updated_at DESC
 LIMIT ?1";
 
+const REVIEW_REQUESTED_EXACT: &str = "\
+SELECT r.owner, r.name, pr.number, pr.title, pr.is_draft, pr.author,
+       pr.review_state, pr.checks_state, pr.updated_at,
+       (SELECT COUNT(*) FROM review_thread t
+         WHERE t.pr_id = pr.id AND t.is_resolved = 0)
+FROM pull_request pr
+JOIN repo r ON r.id = pr.repo_id
+WHERE pr.state = 'open' AND r.is_tracked = 1
+  AND pr.author <> ?2
+  AND EXISTS (SELECT 1 FROM review_request rr
+                WHERE rr.pr_id = pr.id AND rr.reviewer = ?2)
+ORDER BY pr.updated_at DESC
+LIMIT ?1";
+
 const OPEN_FILTERED_BY_TITLE: &str = "\
 SELECT r.owner, r.name, pr.number, pr.title, pr.is_draft, pr.author,
        pr.review_state, pr.checks_state, pr.updated_at, 0
@@ -48,16 +64,29 @@ pub enum InboxQuery {
     ReviewRequestedApproximation,
     OpenFilteredByCommonTitle,
     OpenFilteredByRareTitle,
+    ReviewRequestedExact,
 }
 
 impl InboxQuery {
-    pub const ALL: [InboxQuery; 5] = [
+    pub const ALL: [InboxQuery; 6] = [
         InboxQuery::OpenAcrossTrackedRepos,
         InboxQuery::OpenWithUnresolvedThreadCount,
         InboxQuery::ReviewRequestedApproximation,
         InboxQuery::OpenFilteredByCommonTitle,
         InboxQuery::OpenFilteredByRareTitle,
+        InboxQuery::ReviewRequestedExact,
     ];
+
+    pub fn supported_by(self, variant: SchemaVariant) -> bool {
+        self != InboxQuery::ReviewRequestedExact || variant.records_review_requests()
+    }
+
+    pub fn for_schema(variant: SchemaVariant) -> Vec<InboxQuery> {
+        InboxQuery::ALL
+            .into_iter()
+            .filter(|query| query.supported_by(variant))
+            .collect()
+    }
 
     pub fn id(self) -> &'static str {
         match self {
@@ -66,6 +95,7 @@ impl InboxQuery {
             InboxQuery::ReviewRequestedApproximation => "review_requested_approximation",
             InboxQuery::OpenFilteredByCommonTitle => "open_filtered_by_common_title",
             InboxQuery::OpenFilteredByRareTitle => "open_filtered_by_rare_title",
+            InboxQuery::ReviewRequestedExact => "review_requested_exact",
         }
     }
 
@@ -77,13 +107,16 @@ impl InboxQuery {
             InboxQuery::OpenFilteredByCommonTitle | InboxQuery::OpenFilteredByRareTitle => {
                 OPEN_FILTERED_BY_TITLE
             }
+            InboxQuery::ReviewRequestedExact => REVIEW_REQUESTED_EXACT,
         }
     }
 
     fn second_parameter(self, filter: &InboxFilter) -> Option<String> {
         match self {
             InboxQuery::OpenAcrossTrackedRepos | InboxQuery::OpenWithUnresolvedThreadCount => None,
-            InboxQuery::ReviewRequestedApproximation => Some(filter.viewer.clone()),
+            InboxQuery::ReviewRequestedApproximation | InboxQuery::ReviewRequestedExact => {
+                Some(filter.viewer.clone())
+            }
             InboxQuery::OpenFilteredByCommonTitle => Some(filter.common_title_pattern.clone()),
             InboxQuery::OpenFilteredByRareTitle => Some(filter.rare_title_pattern.clone()),
         }
@@ -158,12 +191,16 @@ pub fn run(
 mod tests {
     use super::{InboxFilter, InboxQuery, run};
     use crate::dataset::{DatasetShape, seed};
-    use crate::schema;
+    use crate::schema::{self, SchemaVariant};
 
     fn reference_database() -> (tempfile::TempDir, rusqlite::Connection) {
+        database(SchemaVariant::Corrected)
+    }
+
+    fn database(variant: SchemaVariant) -> (tempfile::TempDir, rusqlite::Connection) {
         let directory = tempfile::tempdir().unwrap();
-        let mut connection = schema::create(&directory.path().join("quay.db")).unwrap();
-        seed(&mut connection, &DatasetShape::reference()).unwrap();
+        let mut connection = schema::create(&directory.path().join("quay.db"), variant).unwrap();
+        seed(&mut connection, &DatasetShape::reference(), variant).unwrap();
         (directory, connection)
     }
 
@@ -171,7 +208,7 @@ mod tests {
     fn every_declared_query_runs_against_the_reference_dataset() {
         let (_directory, connection) = reference_database();
         let filter = InboxFilter::default();
-        for query in InboxQuery::ALL {
+        for query in InboxQuery::for_schema(SchemaVariant::Corrected) {
             let rows = run(&connection, query, &filter).unwrap();
             assert!(rows.len() <= filter.limit as usize, "{}", query.id());
         }
@@ -241,8 +278,8 @@ mod tests {
     }
 
     #[test]
-    fn no_table_records_which_reviewer_a_pull_request_is_requested_from() {
-        let (_directory, connection) = reference_database();
+    fn the_schema_of_section_six_cannot_express_the_canonical_inbox_filter() {
+        let (_directory, connection) = database(SchemaVariant::SpecificationSectionSix);
         let reviewer_tables: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master
@@ -252,23 +289,67 @@ mod tests {
             )
             .unwrap();
         assert_eq!(reviewer_tables, 0);
+        assert!(
+            !InboxQuery::ReviewRequestedExact.supported_by(SchemaVariant::SpecificationSectionSix)
+        );
+        assert!(
+            run(
+                &connection,
+                InboxQuery::ReviewRequestedExact,
+                &InboxFilter::default()
+            )
+            .is_err()
+        );
+    }
 
-        let has_reviewer_column: i64 = connection
+    #[test]
+    fn the_corrected_schema_answers_the_canonical_inbox_filter_exactly() {
+        let (_directory, connection) = reference_database();
+        let filter = InboxFilter {
+            limit: 10_000,
+            ..InboxFilter::default()
+        };
+        let rows = run(&connection, InboxQuery::ReviewRequestedExact, &filter).unwrap();
+        assert!(!rows.is_empty());
+        assert!(rows.iter().all(|row| row.author != filter.viewer));
+
+        let requested: i64 = connection
             .query_row(
-                "SELECT COUNT(*) FROM pragma_table_info('pull_request')
-                 WHERE name IN ('requested_reviewers', 'reviewer', 'review_requested')",
-                [],
+                "SELECT COUNT(DISTINCT rr.pr_id) FROM review_request rr
+                 JOIN pull_request pr ON pr.id = rr.pr_id
+                 JOIN repo r ON r.id = pr.repo_id
+                 WHERE rr.reviewer = ?1 AND pr.state = 'open'
+                   AND r.is_tracked = 1 AND pr.author <> ?1",
+                [&filter.viewer],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(has_reviewer_column, 0);
+        assert_eq!(rows.len() as i64, requested);
+    }
+
+    #[test]
+    fn the_exact_filter_is_stricter_than_the_approximation_it_replaces() {
+        let (_directory, connection) = reference_database();
+        let filter = InboxFilter {
+            limit: 10_000,
+            ..InboxFilter::default()
+        };
+        let exact = run(&connection, InboxQuery::ReviewRequestedExact, &filter).unwrap();
+        let approximate = run(
+            &connection,
+            InboxQuery::ReviewRequestedApproximation,
+            &filter,
+        )
+        .unwrap();
+        assert!(exact.len() < approximate.len());
     }
 
     #[test]
     fn an_empty_database_yields_an_empty_inbox_rather_than_an_error() {
         let directory = tempfile::tempdir().unwrap();
-        let connection = schema::create(&directory.path().join("quay.db")).unwrap();
-        for query in InboxQuery::ALL {
+        let connection =
+            schema::create(&directory.path().join("quay.db"), SchemaVariant::Corrected).unwrap();
+        for query in InboxQuery::for_schema(SchemaVariant::Corrected) {
             assert!(
                 run(&connection, query, &InboxFilter::default())
                     .unwrap()

@@ -199,21 +199,23 @@ fn write_j1b(page: &mut String) -> Result<(), Box<dyn Error>> {
     )?;
     writeln!(
         page,
-        "Le budget `inbox_query` retient le p99 le plus défavorable des quatre requêtes sur le \
-         dataset de référence, cache chaud.\n"
+        "Le budget `inbox_query` retient le p99 le plus défavorable des requêtes du schéma \
+         corrigé, dataset de référence, cache chaud. Le schéma `section6` est le §6 verbatim, \
+         conservé comme témoin de comparaison.\n"
     )?;
 
     writeln!(
         page,
-        "| Dataset | Requête | Cache | Lignes | p50 ms | p95 ms | p99 ms | max ms | Échantillons \
-         | Log brut |"
+        "| Schéma | Dataset | Requête | Cache | Lignes | p50 ms | p95 ms | p99 ms | max ms | \
+         Échantillons | Log brut |"
     )?;
-    writeln!(page, "|---|---|---|---|---|---|---|---|---|---|")?;
+    writeln!(page, "|---|---|---|---|---|---|---|---|---|---|---|")?;
     let query_rows = rows(&summary);
     for row in &query_rows {
         writeln!(
             page,
-            "| {} | `{}` | {} | {} | {:.3} | {:.3} | {:.3} | {:.3} | {} | `{}` |",
+            "| {} | {} | `{}` | {} | {} | {:.3} | {:.3} | {:.3} | {:.3} | {} | `{}` |",
+            text(row, "/schema", "?"),
             text(row, "/dataset", "?"),
             text(row, "/query", "?"),
             text(row, "/cache", "?"),
@@ -231,12 +233,12 @@ fn write_j1b(page: &mut String) -> Result<(), Box<dyn Error>> {
     writeln!(page, "### Plans d'exécution SQLite\n")?;
     let mut seen: Vec<String> = Vec::new();
     for row in &query_rows {
-        let query = text(row, "/query", "?").to_owned();
-        if seen.contains(&query) {
+        let key = format!("{}/{}", text(row, "/schema", "?"), text(row, "/query", "?"));
+        if seen.contains(&key) {
             continue;
         }
-        seen.push(query.clone());
-        writeln!(page, "- `{}` : {}", query, text(row, "/plan", "?"))?;
+        seen.push(key.clone());
+        writeln!(page, "- `{}` : {}", key, text(row, "/plan", "?"))?;
     }
     writeln!(page)?;
     Ok(())

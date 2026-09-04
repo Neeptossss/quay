@@ -226,3 +226,145 @@ stratégie sur un artefact local.
    dans `CLAUDE.md` mais ne fait pas partie des étapes 1 à 3.
 4. Les budgets `MISSING` autres que `inbox_query` le resteront jusqu'à leur jalon. Aucun ne doit
    être renseigné autrement que par une mesure réelle.
+
+---
+
+## Session 2026-09-04 (suite) — correction du schéma du §6
+
+Les trois points laissés ouverts à l'entrée précédente sont tranchés. Aucun n'a été décidé sur
+intuition : le §6 verbatim est conservé sous `crates/quay-store/schema/baseline-section-6.sql` comme
+témoin, le schéma corrigé est dans `0001_initial.sql`, et J1-b mesure désormais les deux côte à côte
+sur le même dataset déterministe. Un test vérifie que les deux schémas reçoivent exactement les
+mêmes pull requests, sans quoi la comparaison ne voudrait rien dire.
+
+### Résultat de la comparaison
+
+p99 en millisecondes, cache chaud, dataset de référence puis ×10 et ×100.
+
+| Requête | §6 300 | §6 3 000 | §6 30 000 | corrigé 300 | corrigé 3 000 | corrigé 30 000 |
+|---|---|---|---|---|---|---|
+| `open_across_tracked_repos` | 0,046 | 0,047 | 0,043 | 0,061 | 0,042 | 0,043 |
+| `open_with_unresolved_thread_count` | 0,207 | 13,420 | 267,707 | **0,059** | **0,058** | **0,059** |
+| `review_requested_approximation` | 0,068 | 0,084 | 0,080 | 0,064 | 0,055 | 0,049 |
+| `open_filtered_by_common_title` | 0,043 | 0,068 | 0,058 | 0,049 | 0,041 | 0,042 |
+| `open_filtered_by_rare_title` | 0,067 | 2,708 | 35,973 | **0,049** | **0,266** | **6,309** |
+| `review_requested_exact` | impossible | impossible | impossible | **0,093** | **0,095** | **0,117** |
+
+### Point 1 — index sur `review_thread(pr_id)` : corrigé
+
+```sql
+CREATE INDEX idx_thread_by_pull_request ON review_thread(pr_id, is_resolved);
+CREATE INDEX idx_comment_by_thread ON review_comment(thread_id);
+```
+
+Le compteur de threads non résolus passe de 267,707 ms à 0,059 ms à 30 000 PR, soit un facteur
+4 500, et devient **plat** : 0,059 ms aux trois échelles. Le plan confirme la cause et la correction,
+`AUTOMATIC PARTIAL COVERING INDEX` devient `SEARCH t USING COVERING INDEX
+idx_thread_by_pull_request`. L'index composite `(pr_id, is_resolved)` est couvrant pour ce compte, la
+table `review_thread` n'est plus visitée du tout.
+
+`idx_comment_by_thread` n'est pas exercé par les requêtes d'inbox mesurées ici. Il est ajouté pour la
+même raison que le premier : `review_comment.thread_id` porte `ON DELETE CASCADE` et SQLite
+parcourt la table enfant entière à chaque suppression faute d'index sur la clé étrangère. Sa valeur
+n'est pas mesurée, elle est structurelle, et c'est dit ici plutôt que présenté comme un gain.
+
+### Point 2 — table `review_request` : corrigé
+
+```sql
+CREATE TABLE review_request (
+  pr_id         INTEGER NOT NULL REFERENCES pull_request(id) ON DELETE CASCADE,
+  reviewer      TEXT NOT NULL,
+  is_team       INTEGER NOT NULL DEFAULT 0,
+  requested_at  TEXT NOT NULL,
+  PRIMARY KEY (pr_id, reviewer, is_team)
+) WITHOUT ROWID;
+
+CREATE INDEX idx_review_request_by_reviewer ON review_request(reviewer, pr_id);
+```
+
+`is:pr is:open review-requested:@me -author:@me` est maintenant exprimable, et c'est elle qui porte
+désormais le budget `inbox_query` : 0,093 ms de p99 contre 5 ms de budget, et 0,117 ms à 30 000 PR.
+Le plan est exactement celui qu'on veut : parcours de `idx_pr_inbox` dans l'ordre `updated_at`,
+sonde `EXISTS` sur `idx_review_request_by_reviewer` en index couvrant, arrêt au bout de 50 lignes.
+Le coût ne dépend donc pas du nombre total de PR mais du nombre de lignes rendues.
+
+`is_team` est présent parce que le §3.6 demande le scope `read:org` pour les « reviewers d'équipe ».
+La résolution de l'appartenance à une équipe est du code, pas du schéma, et viendra avec l'étape 4.
+
+`WITHOUT ROWID` parce que la table est entièrement définie par sa clé primaire composite et n'a
+aucune colonne large : la clé primaire est l'index, il n'y a pas de rowid à maintenir en double.
+
+`label:` et `assignee:` du §8.4 n'apparaissent que dans l'exemple `is:issue` du DSL, et les issues
+sont au M3 par le §2. Rien n'est ajouté pour eux. Les ajouter maintenant serait construire pour un
+jalon qu'on n'a pas atteint.
+
+L'ancienne `review_requested_approximation` est conservée : c'est la seule forme exprimable sur le
+schéma témoin, et le test `the_exact_filter_is_stricter_than_the_approximation_it_replaces` fige
+pourquoi elle ne convenait pas. Elle n'est pas dans le chemin du produit.
+
+### Point 3 — `raw` sorti de `pull_request` : corrigé, sans aller plus loin
+
+```sql
+CREATE TABLE pull_request_payload (
+  pr_id         INTEGER PRIMARY KEY REFERENCES pull_request(id) ON DELETE CASCADE,
+  raw           BLOB NOT NULL
+);
+```
+
+Le filtre sélectif passe de 35,973 ms à 6,309 ms à 30 000 PR (facteur 5,7), et de 2,708 ms à
+0,266 ms à 3 000 PR (facteur 10). Les lignes de `pull_request` ne traversent plus les pages de
+débordement des payloads de 3 Ko à chaque balayage. Le principe du §6, « le contenu brut est
+conservé pour permettre une remigration sans re-fetch », est intact : la relation est 1 pour 1 et
+le payload n'est jamais sur le chemin chaud.
+
+**Je m'arrête là et je n'ajoute ni FTS5 ni index couvrant sur les titres.** Trois raisons, dans cet
+ordre :
+
+1. Au dataset du §4 la requête est à 0,049 ms, soit 1 % du budget. À ×10 elle est à 0,266 ms. Les
+   6,309 ms ne surviennent qu'à 30 000 PR ouvertes sur 20 dépôts, cent fois le dataset spécifié.
+2. Le `/` du §8.2 filtre « dans la liste courante ». La liste courante est déjà dans le store en
+   mémoire du frontend (§5.1) : ce filtre-là ne touche pas SQLite du tout. La requête mesurée ici
+   est le pire cas d'une recherche globale, pas celui du raccourci.
+3. La recherche globale (⌘P, §8.2) n'est pas écrite et n'arrive pas avant l'étape 7. Indexer
+   maintenant pour une fonctionnalité non écrite, c'est de la généricité spéculative, et cela coûte
+   une amplification d'écriture à chaque mise à jour de PR.
+
+Point de déclenchement mesuré, à reprendre le jour où ⌘P s'écrit : la recherche globale par balayage
+dépasse le budget de 5 ms entre 3 000 et 30 000 PR ouvertes. FTS5 est le levier connu.
+
+### SQLite est-il le bon outil ?
+
+La question a été posée. Réponse fondée sur ce qui est mesuré, pas sur une préférence.
+
+**Oui, et les chiffres disent que ce n'est même pas le sujet.** La requête d'inbox réelle coûte
+0,093 ms. La requête GraphQL de détail de PR mesurée en J1-a coûte 690 à 880 ms. Le magasin local
+est **quatre ordres de grandeur** sous le coût du réseau. Optimiser le magasin plus loin ne
+déplacerait rien de perceptible : tout le budget de latence perçue se joue sur le réseau, donc sur
+le préchargement du §7.6 et les mutations optimistes du §7.3.
+
+Ce que SQLite apporte et qu'une structure en mémoire n'apporterait pas :
+
+- **Les invariants de crash du §7.3.** « Un crash entre l'étape 1 et 3 ne perd jamais une mutation »
+  est une exigence transactionnelle. La réécrire soi-même est un projet à part entière.
+- **Le DSL de vues sauvegardées du §8.4.** « vue = requête + colonnes + tri + groupement » est un
+  langage de requêtes utilisateur. Sans SQL il faudrait écrire son propre planificateur.
+- **Les lectures concurrentes pendant écriture** (WAL), exigées par le §5.4 : l'IPC répond en moins
+  de 5 ms pendant que le moteur de sync écrit.
+- **La remigration depuis `raw`** sans re-fetch, principe posé au §6.
+
+Les deux défauts trouvés aujourd'hui n'étaient pas des limites de SQLite : c'étaient un index
+manquant et une table manquante. Le premier est passé de 267 ms à 0,059 ms avec une ligne de DDL.
+
+Une réserve à trancher plus tard, pas aujourd'hui : le §6 impose `PRAGMA synchronous = NORMAL` en
+mode WAL. Un crash de processus ne perd alors rien, mais une coupure d'alimentation peut perdre les
+dernières transactions. L'invariant du §7.3 est écrit « un crash » sans préciser lequel. Les clés
+d'idempotence rendent le renvoi sûr, donc le compromis est probablement le bon, mais il doit être
+choisi et pas subi. Non mesuré, à instrumenter le jour où la file de mutations existe.
+
+### Ce qu'il faut faire ensuite
+
+1. Étape 4 : `quay-forge` — auth PAT du §3.6, keychain, cache ETag, `PollingSource` implémentant
+   `EventSource`, plafond de 15 % de spéculation dans le gouverneur.
+2. Étape 5 : migrations versionnées par-dessus `0001_initial.sql`, qui est désormais stable.
+3. Le logger de latence du §9 reste à écrire.
+4. Trancher `synchronous = NORMAL` quand la file de mutations existe.

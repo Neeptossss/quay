@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use quay_store::dataset::{DatasetShape, seed};
 use quay_store::inbox::{InboxFilter, InboxQuery, run};
-use quay_store::schema;
+use quay_store::schema::{self, SchemaVariant};
 
 use crate::paths;
 use crate::stats::Percentiles;
@@ -17,6 +17,7 @@ const WARM_ITERATIONS_SCALED: usize = 2_000;
 const COLD_ITERATIONS: usize = 100;
 
 pub struct QueryMeasurement {
+    pub schema: &'static str,
     pub dataset: String,
     pub scale: usize,
     pub query: &'static str,
@@ -27,86 +28,9 @@ pub struct QueryMeasurement {
     pub raw_log: String,
 }
 
-pub fn measure(started_at: &str) -> Result<Vec<QueryMeasurement>, Box<dyn Error>> {
-    std::fs::create_dir_all(paths::raw())?;
-    let mut measurements = Vec::new();
-
-    for scale in SCALE_FACTORS {
-        let shape = if scale == 1 {
-            DatasetShape::reference()
-        } else {
-            DatasetShape::scaled(scale)
-        };
-        let directory = tempfile::tempdir()?;
-        let database = directory.path().join("quay.db");
-        println!("j1b: seeding {}", shape.label());
-        let mut connection = schema::create(&database)?;
-        seed(&mut connection, &shape)?;
-        drop(connection);
-
-        let warm_iterations = if scale == 1 {
-            WARM_ITERATIONS_REFERENCE
-        } else {
-            WARM_ITERATIONS_SCALED
-        };
-        let filter = InboxFilter::default();
-
-        for query in InboxQuery::ALL {
-            let connection = schema::open(&database)?;
-            let plan = explain(&connection, query)?;
-            let rows = run(&connection, query, &filter)?.len();
-
-            let mut warm = Vec::with_capacity(warm_iterations);
-            for _ in 0..warm_iterations {
-                let started = Instant::now();
-                let result = run(&connection, query, &filter)?;
-                warm.push(started.elapsed().as_secs_f64() * 1_000.0);
-                black_box(result);
-            }
-            drop(connection);
-            measurements.push(record(
-                &Run {
-                    started_at,
-                    shape: &shape,
-                    scale,
-                    query,
-                    cache: "warm",
-                    rows,
-                    plan: &plan,
-                },
-                warm,
-            )?);
-
-            let mut cold = Vec::with_capacity(COLD_ITERATIONS);
-            for _ in 0..COLD_ITERATIONS {
-                let connection = schema::open(&database)?;
-                let started = Instant::now();
-                let result = run(&connection, query, &filter)?;
-                cold.push(started.elapsed().as_secs_f64() * 1_000.0);
-                black_box(result);
-                drop(connection);
-            }
-            measurements.push(record(
-                &Run {
-                    started_at,
-                    shape: &shape,
-                    scale,
-                    query,
-                    cache: "cold",
-                    rows,
-                    plan: &plan,
-                },
-                cold,
-            )?);
-        }
-    }
-
-    write_budget_summary(started_at, &measurements)?;
-    Ok(measurements)
-}
-
 struct Run<'a> {
     started_at: &'a str,
+    variant: SchemaVariant,
     shape: &'a DatasetShape,
     scale: usize,
     query: InboxQuery,
@@ -115,9 +39,102 @@ struct Run<'a> {
     plan: &'a str,
 }
 
+pub fn measure(started_at: &str) -> Result<Vec<QueryMeasurement>, Box<dyn Error>> {
+    std::fs::create_dir_all(paths::raw())?;
+    let mut measurements = Vec::new();
+
+    for variant in SchemaVariant::ALL {
+        for scale in SCALE_FACTORS {
+            measurements.extend(measure_dataset(started_at, variant, scale)?);
+        }
+    }
+
+    write_budget_summary(started_at, &measurements)?;
+    Ok(measurements)
+}
+
+fn measure_dataset(
+    started_at: &str,
+    variant: SchemaVariant,
+    scale: usize,
+) -> Result<Vec<QueryMeasurement>, Box<dyn Error>> {
+    let shape = if scale == 1 {
+        DatasetShape::reference()
+    } else {
+        DatasetShape::scaled(scale)
+    };
+    let directory = tempfile::tempdir()?;
+    let database = directory.path().join("quay.db");
+    println!("j1b: seeding {} on schema {}", shape.label(), variant.id());
+    let mut connection = schema::create(&database, variant)?;
+    seed(&mut connection, &shape, variant)?;
+    drop(connection);
+
+    let warm_iterations = if scale == 1 {
+        WARM_ITERATIONS_REFERENCE
+    } else {
+        WARM_ITERATIONS_SCALED
+    };
+    let filter = InboxFilter::default();
+    let mut measurements = Vec::new();
+
+    for query in InboxQuery::for_schema(variant) {
+        let connection = schema::open(&database)?;
+        let plan = explain(&connection, query)?;
+        let rows = run(&connection, query, &filter)?.len();
+
+        let mut warm = Vec::with_capacity(warm_iterations);
+        for _ in 0..warm_iterations {
+            let started = Instant::now();
+            let result = run(&connection, query, &filter)?;
+            warm.push(started.elapsed().as_secs_f64() * 1_000.0);
+            black_box(result);
+        }
+        drop(connection);
+        measurements.push(record(
+            &Run {
+                started_at,
+                variant,
+                shape: &shape,
+                scale,
+                query,
+                cache: "warm",
+                rows,
+                plan: &plan,
+            },
+            warm,
+        )?);
+
+        let mut cold = Vec::with_capacity(COLD_ITERATIONS);
+        for _ in 0..COLD_ITERATIONS {
+            let connection = schema::open(&database)?;
+            let started = Instant::now();
+            let result = run(&connection, query, &filter)?;
+            cold.push(started.elapsed().as_secs_f64() * 1_000.0);
+            black_box(result);
+            drop(connection);
+        }
+        measurements.push(record(
+            &Run {
+                started_at,
+                variant,
+                shape: &shape,
+                scale,
+                query,
+                cache: "cold",
+                rows,
+                plan: &plan,
+            },
+            cold,
+        )?);
+    }
+    Ok(measurements)
+}
+
 fn record(run: &Run<'_>, samples: Vec<f64>) -> Result<QueryMeasurement, Box<dyn Error>> {
     let Run {
         started_at,
+        variant,
         shape,
         scale,
         query,
@@ -126,8 +143,9 @@ fn record(run: &Run<'_>, samples: Vec<f64>) -> Result<QueryMeasurement, Box<dyn 
         plan,
     } = run;
     let file_name = format!(
-        "j1b-{}-{}-{}-{}.csv",
+        "j1b-{}-{}-{}-{}-{}.csv",
         started_at.replace(':', ""),
+        variant.id(),
         shape.label(),
         query.id(),
         cache
@@ -141,7 +159,8 @@ fn record(run: &Run<'_>, samples: Vec<f64>) -> Result<QueryMeasurement, Box<dyn 
 
     let percentiles = Percentiles::of(&samples).ok_or("an empty sample cannot be summarised")?;
     println!(
-        "j1b: {} {} {} rows={} p50={:.3}ms p99={:.3}ms max={:.3}ms",
+        "j1b: {} {} {} {} rows={} p50={:.3}ms p99={:.3}ms max={:.3}ms",
+        variant.id(),
         shape.label(),
         query.id(),
         cache,
@@ -152,6 +171,7 @@ fn record(run: &Run<'_>, samples: Vec<f64>) -> Result<QueryMeasurement, Box<dyn 
     );
 
     Ok(QueryMeasurement {
+        schema: variant.id(),
         dataset: shape.label(),
         scale: *scale,
         query: query.id(),
@@ -169,13 +189,17 @@ fn write_budget_summary(
 ) -> Result<(), Box<dyn Error>> {
     let worst = measurements
         .iter()
-        .filter(|measurement| measurement.scale == 1 && measurement.cache == "warm")
+        .filter(|measurement| {
+            measurement.schema == SchemaVariant::Corrected.id()
+                && measurement.scale == 1
+                && measurement.cache == "warm"
+        })
         .max_by(|left, right| left.percentiles.p99.total_cmp(&right.percentiles.p99))
         .ok_or("no reference measurement was produced")?;
 
     Summary {
         budget_id: "inbox_query".to_owned(),
-        scenario: format!("j1b {} {}", worst.dataset, worst.query),
+        scenario: format!("j1b {} {} {}", worst.schema, worst.dataset, worst.query),
         statistic: "p99".to_owned(),
         value: worst.percentiles.p99,
         unit: "ms".to_owned(),
