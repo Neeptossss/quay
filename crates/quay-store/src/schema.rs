@@ -47,9 +47,14 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     Ok(connection)
 }
 
-pub fn create(path: &Path, variant: SchemaVariant) -> rusqlite::Result<Connection> {
-    let connection = open(path)?;
-    connection.execute_batch(variant.ddl())?;
+pub fn create(path: &Path, variant: SchemaVariant) -> Result<Connection, crate::StoreError> {
+    let mut connection = open(path)?;
+    match variant {
+        SchemaVariant::Corrected => {
+            crate::migrations::apply(&mut connection, path, &crate::migrations::MIGRATIONS)?;
+        }
+        SchemaVariant::SpecificationSectionSix => connection.execute_batch(variant.ddl())?,
+    }
     Ok(connection)
 }
 
@@ -155,6 +160,18 @@ mod tests {
             let (_directory, connection) = database(variant);
             assert!(connection.execute_batch(variant.ddl()).is_err());
         }
+    }
+
+    #[test]
+    fn the_corrected_schema_is_created_through_the_migration_runner_and_stamps_its_version() {
+        let (_directory, connection) = database(SchemaVariant::Corrected);
+        assert_eq!(crate::migrations::current_version(&connection).unwrap(), 1);
+    }
+
+    #[test]
+    fn the_witness_schema_stays_unversioned_because_no_product_code_opens_it() {
+        let (_directory, connection) = database(SchemaVariant::SpecificationSectionSix);
+        assert_eq!(crate::migrations::current_version(&connection).unwrap(), 0);
     }
 
     #[test]

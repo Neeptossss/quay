@@ -487,3 +487,104 @@ n'engage aucune réécriture.
    sur le schéma corrigé.
 3. Étape 6 : chemin de fetch complet, `PollingSource` implémentant `EventSource`, alimenté par
    `/notifications` et son `X-Poll-Interval`, validateurs persistés dans `resource_cache`.
+
+---
+
+## Session 2026-09-04 (suite) — étape 5, `quay-store`
+
+Décision reportée de l'entrée précédente : M0-1 reste à moitié mesuré et **on avance en supposant le
+pire**, à savoir PAT classique obligatoire. C'est déjà la décision arrêtée du §3.6, donc cette
+hypothèse n'engage aucune réécriture. La case reste ouverte, elle se remplira le jour où un jeton
+fine-grained sera disponible.
+
+### Ce qui a été fait
+
+- **`Tier` dans `quay-core`** : les trois niveaux de fraîcheur du §7.1 avec leurs intervalles, 10 s,
+  60 s, 6 h. `interval_respecting` fait gagner l'intervalle conseillé par la forge quand il est plus
+  long que le nôtre, jamais plus court : le §3.4 dit de respecter `X-Poll-Interval`, y compris quand
+  il augmente. Le type est dans le domaine parce que `quay-sync` en aura besoin sans dépendre du
+  magasin.
+- **Migrations versionnées** (`migrations.rs`) : `PRAGMA user_version` porte la version, chaque
+  migration s'applique dans une transaction, et une base plus récente que le binaire est **refusée**
+  plutôt que rétrogradée. Une migration qui échoue laisse la version intacte et annule les
+  instructions déjà passées, ce que vérifie un test à deux instructions dont la seconde est invalide.
+- **Sauvegarde avant migration destructive** (§11), avec un déclencheur explicite porté par
+  `rewrites_existing_rows`. Testé avec une migration destructive synthétique, sans avoir à en livrer
+  une vraie.
+- **Façade `Store`** : `open` applique les migrations et active `foreign_keys`. C'est le seul chemin
+  d'ouverture du produit ; `schema::create` reste réservé au témoin §6 des mesures et passe
+  désormais par le même exécuteur de migrations pour la variante corrigée, donc les deux chemins ne
+  peuvent plus diverger.
+- **Cache de fraîcheur** (`resource_cache.rs`) : lecture, écriture par remplacement, oubli, et la
+  requête `due_for_refresh` qui rend ce qui est périmé, le plus chaud d'abord. C'est ce que le §6
+  annonce quand il écrit que `stale_after` « pilote le scheduler ». C'est aussi le versant
+  persistant du cache ETag : `quay-forge` émet et relit les validateurs mais ne les conserve pas,
+  puisqu'il ne connaît pas `quay-store` (§5.2).
+
+### Deux bugs trouvés par les tests, dont un sérieux
+
+**La sauvegarde avant migration était fausse.** `std::fs::copy` sur une base en mode WAL copie un
+fichier `.db` qui ne contient pas les dernières transactions : elles sont dans le `-wal`. La
+sauvegarde produite était vide de ce qu'elle devait protéger. Une sauvegarde silencieusement
+incomplète est pire que pas de sauvegarde, puisqu'on s'appuie dessus pour accepter une migration
+destructive. Corrigé par `VACUUM INTO`, qui produit un instantané cohérent. Le test vérifie
+maintenant qu'une ligne **commitée avant** la migration se retrouve dans la sauvegarde, pas seulement
+que le fichier existe.
+
+**Les `PRAGMA` en tête du DDL empêchaient toute migration transactionnelle.** SQLite refuse
+`PRAGMA synchronous` à l'intérieur d'une transaction. Le §6 place `journal_mode` et `synchronous` en
+tête du bloc de schéma, mais ce sont des réglages de connexion, pas du schéma : ils sont retirés des
+deux fichiers DDL et appliqués par `schema::open`, pour le témoin comme pour le schéma corrigé. La
+configuration effective est identique, seule sa localisation change. J1-b a été relancé après ce
+déplacement pour que les logs correspondent au code, plutôt que de supposer que rien n'avait bougé.
+
+### Une réserve
+
+`foreign_keys` est activé par `Store::open` et **pas** par `schema::create`, donc pas dans le
+harnais de mesure J1-b. L'écart est sans effet sur J1-b, qui ne mesure que des lectures, mais il en
+aura un le jour où on mesurera des écritures : la vérification des clés étrangères a un coût, et
+c'est précisément ce que les index ajoutés à l'entrée précédente rendent abordable. À reprendre
+quand la file de mutations du §7.3 sera mesurée.
+
+### Ce qu'il faut faire ensuite
+
+1. Étape 6 : le chemin de fetch complet. `PollingSource` implémentant `EventSource`, alimenté par
+   `/notifications` et son `X-Poll-Interval`, validateurs lus et écrits dans `resource_cache`,
+   réponses désérialisées dans les types de transport puis écrites dans SQLite.
+2. Les écritures du magasin — insertion et mise à jour de dépôts, pull requests, threads,
+   commentaires et demandes de review — n'existent pas encore. Elles arrivent avec l'étape 6, qui en
+   est le premier consommateur.
+3. Étape 7 : première sortie visible, l'inbox réelle.
+
+### Relance de J1-b après le déplacement des pragmas, et une correction
+
+Les logs bruts de J1-b sont régénérés. Les conclusions tiennent, mais la relance apprend quelque
+chose sur la méthode et corrige une affirmation de l'entrée précédente.
+
+| Requête, p99 ms cache chaud | §6 300 | §6 3 000 | §6 30 000 | corrigé 300 | corrigé 3 000 | corrigé 30 000 |
+|---|---|---|---|---|---|---|
+| `open_across_tracked_repos` | 0,041 | 0,043 | 0,051 | 0,041 | 0,040 | 0,043 |
+| `open_with_unresolved_thread_count` | 0,181 | 11,668 | 203,771 | 0,061 | 0,059 | 0,068 |
+| `review_requested_approximation` | 0,057 | 0,059 | 0,061 | 0,055 | 0,053 | 0,057 |
+| `open_filtered_by_common_title` | 0,049 | 0,042 | 0,047 | 0,046 | 0,043 | 0,044 |
+| `open_filtered_by_rare_title` | 0,112 | 2,166 | 21,553 | 0,046 | 0,281 | 3,542 |
+| `review_requested_exact` | impossible | impossible | impossible | 0,091 | 0,114 | 0,108 |
+
+**Les p99 absolus varient d'environ un facteur 1,8 d'une exécution à l'autre sur cette machine.**
+Le balayage sélectif à 30 000 PR donne 35,973 ms au premier passage et 21,553 ms au second sur le
+schéma §6, 6,309 ms puis 3,542 ms sur le schéma corrigé. Le rapport entre les deux schémas, lui, est
+stable : 5,7 puis 6,1. **C'est le rapport qui est la mesure, pas la valeur absolue d'un p99 unique.**
+Une machine de bureau chargée n'est pas un banc isolé, et un p99 sur 2 000 itérations attrape le
+bruit du système. À retenir pour toute lecture future de ces chiffres.
+
+**Correction d'une affirmation de l'entrée précédente.** J'y écrivais que la recherche globale par
+balayage « dépasse le budget de 5 ms entre 3 000 et 30 000 PR ouvertes », sur la foi des 6,309 ms
+mesurés à 30 000. La relance donne 3,542 ms au même point, donc **sous** le budget. Le point de
+bascule n'est pas franchi de façon nette à 30 000 : il est au voisinage du budget et dépend de la
+charge de la machine. La décision de ne pas ajouter FTS5 aujourd'hui n'en est que mieux fondée, mais
+la phrase était plus affirmative que la mesure ne l'autorisait.
+
+Ce qui ne bouge pas d'une exécution à l'autre : le compteur de threads non résolus reste
+catastrophique sur le §6 (203 à 267 ms à 30 000 PR) et **plat** sur le schéma corrigé (0,059 à
+0,068 ms aux trois échelles), et `review_requested_exact` reste à 0,09-0,11 ms contre 5 ms de
+budget. Les deux corrections structurantes sont confirmées.

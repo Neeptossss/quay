@@ -2,18 +2,18 @@
   "budget_id": "inbox_query",
   "scenario": "j1b corrected 20repos-300open-0closed-5000comments review_requested_exact",
   "statistic": "p99",
-  "value": 0.092709,
+  "value": 0.090833,
   "unit": "ms",
   "percentiles": {
     "samples": 10000,
-    "min": 0.057624999999999996,
-    "mean": 0.06763765209999936,
-    "p50": 0.06679199999999999,
-    "p95": 0.0785,
-    "p99": 0.092709,
-    "max": 0.18937500000000002
+    "min": 0.058667,
+    "mean": 0.0684264439999999,
+    "p50": 0.06724999999999999,
+    "p95": 0.078084,
+    "p99": 0.090833,
+    "max": 0.21604099999999998
   },
-  "measured_at": "2026-09-04T14:32:40.208707Z",
+  "measured_at": "2026-09-04T15:16:30.145759Z",
   "machine": "aarch64-macos",
-  "raw_log": "measurements/raw/j1b-2026-09-04T143240.208707Z-corrected-20repos-300open-0closed-5000comments-review_requested_exact-warm.csv"
+  "raw_log": "measurements/raw/j1b-2026-09-04T151630.145759Z-corrected-20repos-300open-0closed-5000comments-review_requested_exact-warm.csv"
 }

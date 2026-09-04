@@ -1,5 +1,7 @@
 use rusqlite::{Connection, Row};
 
+use crate::error::StoreError;
+
 use crate::schema::SchemaVariant;
 
 const OPEN_ACROSS_TRACKED_REPOS: &str = "\
@@ -174,16 +176,17 @@ pub fn run(
     connection: &Connection,
     query: InboxQuery,
     filter: &InboxFilter,
-) -> rusqlite::Result<Vec<InboxRow>> {
+) -> Result<Vec<InboxRow>, StoreError> {
     let mut statement = connection.prepare_cached(query.sql())?;
-    match query.second_parameter(filter) {
+    let rows = match query.second_parameter(filter) {
         None => statement
             .query_map((filter.limit,), read_row)?
             .collect::<rusqlite::Result<Vec<InboxRow>>>(),
         Some(second) => statement
             .query_map((filter.limit, second), read_row)?
             .collect::<rusqlite::Result<Vec<InboxRow>>>(),
-    }
+    };
+    Ok(rows?)
 }
 
 #[cfg(test)]

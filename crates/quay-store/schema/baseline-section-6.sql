@@ -1,6 +1,3 @@
-PRAGMA journal_mode = WAL;
-PRAGMA synchronous = NORMAL;
-
 CREATE TABLE account (
   id            INTEGER PRIMARY KEY,
   host          TEXT NOT NULL,
