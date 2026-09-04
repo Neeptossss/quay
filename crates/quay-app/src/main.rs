@@ -27,6 +27,15 @@ fn main() -> ExitCode {
         Some("login") => runtime.block_on(session::login()),
         Some("sync") => runtime.block_on(session::sync()),
         Some("inbox") => session::inbox(),
+        Some("approve") => match arguments.get(1) {
+            Some(locator) => session::approve(locator),
+            None => return usage(),
+        },
+        Some("push") => runtime.block_on(session::push()),
+        Some("cancel") => match arguments.get(1) {
+            Some(identifier) => session::cancel(identifier),
+            None => return usage(),
+        },
         Some("status") => runtime.block_on(session::status()),
         _ => return usage(),
     };
@@ -45,7 +54,10 @@ fn usage() -> ExitCode {
     eprintln!("  login    valider un jeton et le déposer dans le trousseau");
     eprintln!("  sync     rafraîchir depuis la forge et écrire dans SQLite");
     eprintln!("  inbox    afficher la file de revue depuis SQLite");
-    eprintln!("  status   quota, capacités et fraîcheur du cache");
+    eprintln!("  approve  <proprietaire/depot#numero> approuver, en optimiste");
+    eprintln!("  push     vider la file de mutations vers la forge");
+    eprintln!("  cancel   <id> renoncer à une mutation et défaire son état optimiste");
+    eprintln!("  status   quota, capacités, file de mutations et durabilité");
     eprintln!();
     eprintln!(
         "base de données : ${} ou l'emplacement de données du système",

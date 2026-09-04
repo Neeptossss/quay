@@ -18,6 +18,12 @@ pub enum StoreError {
     #[error("the database could not be backed up before migration {version}: {message}")]
     BackupFailed { version: i64, message: String },
 
+    #[error("no row in {table} carries the node id {node_id}")]
+    UnknownTarget {
+        table: &'static str,
+        node_id: String,
+    },
+
     #[error("the stored value {value:?} in column {column} is not one this build understands")]
     UnreadableValue { column: &'static str, value: String },
 }

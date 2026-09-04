@@ -242,3 +242,47 @@ fn forgetting_a_resource_removes_it_and_forgetting_it_again_is_harmless() {
     }
     assert!(matches!(store.freshness("pr:PR_1"), Ok(None)));
 }
+
+#[test]
+fn the_default_store_is_safe_against_a_process_crash_not_against_a_power_loss() {
+    let (_directory, store) = store();
+    assert_eq!(store.durability(), quay_store::Durability::ProcessCrashSafe);
+    let synchronous: i64 = match store
+        .connection()
+        .query_row("PRAGMA synchronous", [], |row| row.get(0))
+    {
+        Ok(value) => value,
+        Err(error) => panic!("the pragma must be readable: {error}"),
+    };
+    assert_eq!(synchronous, 1, "synchronous NORMAL is the level 1");
+}
+
+#[test]
+fn asking_for_power_loss_safety_turns_on_both_pragmas_it_needs() {
+    let directory = match tempfile::tempdir() {
+        Ok(directory) => directory,
+        Err(error) => panic!("temporary directory: {error}"),
+    };
+    let store = match Store::open_with(
+        &directory.path().join("quay.db"),
+        quay_store::Durability::PowerLossSafe,
+    ) {
+        Ok(store) => store,
+        Err(error) => panic!("the store must open: {error}"),
+    };
+    let read = |pragma: &str| -> i64 {
+        match store
+            .connection()
+            .query_row(&format!("PRAGMA {pragma}"), [], |row| row.get(0))
+        {
+            Ok(value) => value,
+            Err(error) => panic!("the pragma must be readable: {error}"),
+        }
+    };
+    assert_eq!(read("synchronous"), 2, "synchronous FULL is the level 2");
+    assert_eq!(
+        read("fullfsync"),
+        1,
+        "without fullfsync a macOS fsync returns before the drive has written"
+    );
+}

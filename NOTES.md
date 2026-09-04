@@ -768,3 +768,108 @@ mesuré. La suite est le M1 : file de mutations optimistes (§7.3), préchargeme
 palette de commandes et carte des touches (§8.2 et §8.3), vues sauvegardées avec le DSL (§8.4), et
 l'interface Tauri. Trancher avant : la question M0-1 laissée ouverte, et le `synchronous = NORMAL`
 du §6 au regard des invariants de crash du §7.3.
+
+---
+
+## Session 2026-09-04 (suite) — M1, file de mutations optimistes (§7.3)
+
+Les deux questions laissées ouvertes sont tranchées.
+
+### Décision 1 — M0-1 fermée sur l'hypothèse haute
+
+On suppose que `/notifications` exige un PAT classique. C'est déjà la décision arrêtée du §3.6, donc
+l'hypothèse ne coûte rien et n'engage aucune réécriture. La case se rouvrira le jour où un jeton
+fine-grained sera disponible.
+
+### Décision 2 — `synchronous` tranché par la mesure, et un premier chiffre trompeur
+
+`cargo run -p xtask -- measure durability` chronomètre une mutation optimiste, c'est-à-dire une
+transaction contenant une mise à jour et une insertion en file, 2 000 fois par mode.
+
+| Garantie | `synchronous` | `fullfsync` | p50 | p99 |
+|---|---|---|---|---|
+| `process_crash_safe` | NORMAL | non | 0,015 ms | **0,042 ms** |
+| `power_loss_safe` | FULL | oui | 3,996 ms | **5,965 ms** |
+
+**Mon premier passage mesurait `FULL` sans `fullfsync` et donnait 0,086 ms de p99.** J'aurais conclu
+que la durabilité complète était gratuite. Elle ne l'est pas : sur macOS, `fsync()` rend la main
+avant que le disque ait réellement écrit, et seul `PRAGMA fullfsync` déclenche un vidage du cache du
+disque. Le chiffre honnête est 5,965 ms, **au-dessus du budget de 5 ms** du §5.4 et de l'étape 2 du
+§7.3.
+
+**Décision : `ProcessCrashSafe` par défaut**, ce que le §6 spécifiait déjà. Justification, cette fois
+appuyée sur un chiffre :
+
+1. L'invariant du §7.3 est écrit « un crash », et un crash de processus ne perd rien en mode WAL avec
+   `synchronous = NORMAL`.
+2. La coupure de courant est une autre classe de panne, que le §7.3 ne nomme pas, et dont la
+   conséquence ici n'est ni une corruption ni un état à moitié appliqué : l'état optimiste et la
+   ligne de file sont perdus **ensemble**, puisqu'ils partagent la transaction. L'utilisateur voit
+   que son action n'a pas eu lieu, il la refait.
+3. La payer coûterait 5,965 ms de p99 sur le chemin qui doit rendre la main en moins de 5 ms.
+
+`Durability::PowerLossSafe` reste offert, et l'énumération est nommée par la garantie obtenue plutôt
+que par le nom du pragma, précisément parce que le pragma seul ment sur macOS.
+
+### La file de mutations
+
+- Les six genres du §6 sont modélisés, avec `is_safe_to_resend` qui distingue ce qui **crée du
+  contenu** de ce qui **pose un état**. C'est cette distinction qui tient l'invariant « un crash
+  entre 3 et 4 ne duplique jamais un commentaire » : GitHub n'a pas de clé d'idempotence côté
+  serveur, donc au redémarrage une mutation restée `inflight` est remise en file si la renvoyer est
+  sans effet de bord, et **marquée en échec avec la raison en clair** sinon. Prétendre que la clé
+  d'idempotence protège du double envoi HTTP aurait été faux : elle protège de la double mise en
+  file, ce qui n'est pas la même chose.
+- L'état optimiste et la ligne de file sont écrits **dans la même transaction**, l'appelant
+  fournissant l'effet local. Un effet local qui échoue ne laisse aucune ligne de file : c'est ce que
+  vérifie le test sur une cible inconnue.
+- Deux mutations sur la même cible sont sérialisées par la requête de réservation elle-même, qui
+  ignore une cible ayant déjà une mutation en vol.
+- Le rollback restaure la valeur précédente, transportée dans le payload. Une valeur précédente
+  absente revient absente, pas en chaîne vide.
+- Le worker distingue trois issues : 2xx règle, 4xx définitif annule et **rend la raison de la
+  forge**, tout le reste diffère en gardant l'état optimiste. Les verrous de développement diffèrent
+  aussi, **ils n'annulent pas** : l'intention de l'utilisateur reste valide, c'est l'outil qui la
+  retient.
+
+### Deux bugs trouvés en exécutant pour de vrai
+
+**Le worker rejouait en boucle la mutation qu'il venait de différer.** Attrapé par le test du verrou
+lecture seule, qui comptait quatre reports au lieu d'un. Une mutation traitée dans une passe n'y est
+plus reprise. Le garde-fou remet la mutation en file **sans écraser sa dernière erreur**, sinon le
+message précis de la forge disparaissait derrière un message technique.
+
+**Le trousseau macOS bloque un shell non interactif.** `quay push` restait figé sans rien afficher.
+Cause : recompiler le binaire change sa signature, macOS redemande l'autorisation d'accès au secret
+par un dialogue graphique, et un shell sans terminal attend indéfiniment. Deux corrections : un jeton
+donné par l'environnement prime désormais sur le trousseau, et la lecture du trousseau est bornée
+dans le temps et rend une erreur qui nomme la cause et l'issue au lieu de se figer. Consigné dans
+`docs/platform-constraints.md`.
+
+### La démonstration, sur des données réelles
+
+`quay approve Groupe-RHF/parts-discount#333` met l'approbation en file et l'état local passe à
+`approved` immédiatement. `quay push`, verrou `QUAY_READONLY=1` actif, rend :
+
+```
+0 envoyée(s), 0 annulée(s), 1 différée(s)
+file pending : 1 entrée(s)
+  approve_pr sur PR_kwDOOGDF2s79GAwa, 4 tentative(s) — read-only mode rejected a rest write
+```
+
+Rien n'est parti vers la vraie pull request. `quay cancel 1` a défait l'état optimiste et la base
+locale est revenue à `review_state = NULL`, ce qu'elle était avant.
+
+### Réserves
+
+- Le backoff entre deux passes du worker n'est pas cadencé : `drain` traite chaque mutation une fois
+  puis rend la main, et c'est l'appelant qui décide quand recommencer. La boucle du §7.1 n'existe
+  toujours pas.
+- La bannière non modale du §7.3 est une ligne de terminal ici. Le vrai comportement demandé arrive
+  avec l'interface.
+- Aucune mutation n'a été envoyée à GitHub de toute la session. Le verrou n'a jamais été levé.
+
+### Ce qu'il faut faire ensuite
+
+Préchargement couche 1 (§7.6), puis la boucle de scheduler cadencée par `due_for_refresh` et les
+trois tiers du §7.1, puis l'interface.

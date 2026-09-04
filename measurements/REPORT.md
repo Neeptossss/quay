@@ -2,7 +2,7 @@
 
 Ce fichier est généré par `cargo run -p xtask -- report` à partir des logs bruts de `measurements/raw/`. Il ne se modifie pas à la main.
 
-- Généré le : 2026-09-04T15:45:43.464165Z
+- Généré le : 2026-09-04T16:13:00.071815Z
 - Machine : aarch64-macos
 
 ## Budgets du §4
@@ -20,6 +20,17 @@ Ce fichier est généré par `cargo run -p xtask -- report` à partir des logs b
 | `background_cpu_idle` (cpu at rest, window in the background) | §4 | ≤ 0.5 % | mean | process measurement | — | **MISSING** | — |
 | `github_quota_per_hour` (GitHub quota consumed in normal operation) | §4 | ≤ 1500 req/h | max | rate governor counter | — | **MISSING** | — |
 | `cache_served_navigations` (navigations served from cache in under 50 ms) | §4 | ≥ 85 % | sliding window | preload_outcome | — | **MISSING** | — |
+
+## Durabilité des écritures — §6 face au §7.3
+
+- Mesuré le : 2026-09-04T15:53:50.296738Z
+- Opération : optimistic approve: one transaction, one update and one queue insert
+- Itérations : 2000
+
+| Garantie | `synchronous` | `fullfsync` | p50 ms | p95 ms | p99 ms | max ms | Log brut |
+|---|---|---|---|---|---|---|---|
+| `process_crash_safe` | NORMAL | false | 0.015 | 0.027 | 0.042 | 2.056 | `measurements/raw/durability-2026-09-04T155350.296738Z-process_crash_safe.csv` |
+| `power_loss_safe` | FULL | true | 3.996 | 4.674 | 5.965 | 10.819 | `measurements/raw/durability-2026-09-04T155350.296738Z-power_loss_safe.csv` |
 
 ## Critère de sortie du §9 — l'inbox réelle depuis SQLite
 

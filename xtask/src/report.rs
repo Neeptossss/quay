@@ -20,6 +20,7 @@ pub fn generate() -> Result<PathBuf, Box<dyn Error>> {
     writeln!(page, "- Machine : {}\n", crate::machine())?;
 
     write_budgets(&mut page)?;
+    write_durability(&mut page)?;
     write_inbox_real(&mut page)?;
     write_m0_1(&mut page)?;
     write_j1a(&mut page)?;
@@ -71,6 +72,47 @@ fn write_budgets(page: &mut String) -> Result<(), Box<dyn Error>> {
             measured,
             status.verdict.label(),
             raw_log
+        )?;
+    }
+    writeln!(page)?;
+    Ok(())
+}
+
+fn write_durability(page: &mut String) -> Result<(), Box<dyn Error>> {
+    writeln!(page, "## Durabilité des écritures — §6 face au §7.3\n")?;
+    let Some(summary) = load("durability") else {
+        writeln!(
+            page,
+            "Pas encore mesuré. Lancer `cargo run -p xtask -- measure durability`.\n"
+        )?;
+        return Ok(());
+    };
+    writeln!(
+        page,
+        "- Mesuré le : {}",
+        text(&summary, "/measured_at", "inconnu")
+    )?;
+    writeln!(page, "- Opération : {}", text(&summary, "/operation", "?"))?;
+    writeln!(page, "- Itérations : {}\n", number(&summary, "/iterations"))?;
+    writeln!(
+        page,
+        "| Garantie | `synchronous` | `fullfsync` | p50 ms | p95 ms | p99 ms | max ms | Log brut |"
+    )?;
+    writeln!(page, "|---|---|---|---|---|---|---|---|")?;
+    for row in &rows(&summary) {
+        writeln!(
+            page,
+            "| `{}` | {} | {} | {:.3} | {:.3} | {:.3} | {:.3} | `{}` |",
+            text(row, "/guarantee", "?"),
+            text(row, "/synchronous", "?"),
+            row.pointer("/fullfsync")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            float(row, "/percentiles/p50"),
+            float(row, "/percentiles/p95"),
+            float(row, "/percentiles/p99"),
+            float(row, "/percentiles/max"),
+            text(row, "/raw_log", "?")
         )?;
     }
     writeln!(page)?;

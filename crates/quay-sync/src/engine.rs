@@ -21,6 +21,7 @@ pub struct TickReport {
 pub struct SyncEngine {
     store: Store,
     governor: Arc<RateGovernor>,
+    api_base: String,
     graphql_endpoint: String,
     account_id: i64,
     sources: Vec<Box<dyn EventSource>>,
@@ -31,6 +32,7 @@ impl SyncEngine {
         Self {
             store,
             governor,
+            api_base: api_base.trim_end_matches('/').to_owned(),
             graphql_endpoint: format!("{}/graphql", api_base.trim_end_matches('/')),
             account_id,
             sources: Vec::new(),
@@ -44,6 +46,17 @@ impl SyncEngine {
 
     pub fn store(&self) -> &Store {
         &self.store
+    }
+
+    pub async fn drain_mutations(
+        &mut self,
+        limit: usize,
+    ) -> Result<crate::MutationReport, SyncError> {
+        crate::worker::drain(&mut self.store, &self.governor, &self.api_base, limit).await
+    }
+
+    pub fn replay_interrupted_mutations(&mut self) -> Result<quay_store::ReplayReport, SyncError> {
+        Ok(self.store.replay_interrupted_mutations()?)
     }
 
     pub async fn tick(&mut self) -> Result<TickReport, SyncError> {

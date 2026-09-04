@@ -2,6 +2,7 @@ use std::error::Error;
 use std::sync::Arc;
 use std::time::Instant;
 
+use quay_core::MutationState;
 use quay_core::Priority;
 use quay_forge::{
     Capabilities, Capability, DevLocks, GovernorConfig, Identity, OutboundRequest, PollingSource,
@@ -45,17 +46,18 @@ fn stored_login(store: &Store) -> Result<Option<String>, Box<dyn Error>> {
 }
 
 fn token_for(login: Option<&str>) -> Result<Token, Box<dyn Error>> {
-    if let Some(login) = login
-        && let Some(token) = keychain().load(login)?
-    {
+    if let Some(token) = Token::from_env(TOKEN_VARIABLE) {
         return Ok(token);
     }
-    Token::from_env(TOKEN_VARIABLE).ok_or_else(|| {
-        format!(
-            "aucun jeton : lancer `quay login`, ou définir ${TOKEN_VARIABLE} le temps d'une session"
+    match login {
+        Some(login) => keychain()
+            .load(login)?
+            .ok_or_else(|| format!("aucun jeton pour {login} : lancer `quay login`").into()),
+        None => Err(format!(
+            "aucun compte connu : lancer `quay login`, ou définir ${TOKEN_VARIABLE}"
         )
-        .into()
-    })
+        .into()),
+    }
 }
 
 fn governor(token: Token) -> Result<Arc<RateGovernor>, Box<dyn Error>> {
@@ -228,6 +230,103 @@ pub fn inbox() -> Outcome {
     Ok(())
 }
 
+fn now_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+pub fn approve(locator: &str) -> Outcome {
+    let (repository, number) = locator
+        .rsplit_once('#')
+        .ok_or("attendu : proprietaire/depot#numero")?;
+    let (owner, name) = repository
+        .split_once('/')
+        .ok_or("attendu : proprietaire/depot#numero")?;
+    let number: i64 = number
+        .parse()
+        .map_err(|_| "le numéro doit être un entier")?;
+
+    let mut store = open_store()?;
+    let node_id = store
+        .find_pull_request(owner, name, number)?
+        .ok_or_else(|| format!("{locator} n'est pas dans la base locale, lancer `quay sync`"))?;
+
+    let now = now_seconds();
+    let idempotency = format!("approve_pr:{node_id}:{now}");
+    let identifier = store.approve_pull_request(&node_id, &idempotency, now)?;
+    println!("approbation {identifier} en file, état local déjà à jour");
+    println!("`quay push` pour l'envoyer ; le mode lecture seule la garde en attente");
+    Ok(())
+}
+
+pub fn cancel(identifier: &str) -> Outcome {
+    let identifier: i64 = identifier
+        .parse()
+        .map_err(|_| "attendu : l'identifiant numérique de la mutation")?;
+    let mut store = open_store()?;
+    let mutation = store
+        .mutation(identifier)?
+        .ok_or_else(|| format!("aucune mutation {identifier}"))?;
+    store.roll_back_mutation(identifier, "annulée par l'utilisateur")?;
+    println!(
+        "{} sur {} annulée, état local revenu à ce qu'il était",
+        mutation.kind.id(),
+        mutation.target
+    );
+    Ok(())
+}
+
+pub async fn push() -> Outcome {
+    let mut store = open_store()?;
+    let replay = store.replay_interrupted_mutations()?;
+    if replay.requeued > 0 || replay.held_back > 0 {
+        println!(
+            "reprise : {} remise(s) en file, {} retenue(s) car un renvoi créerait un doublon",
+            replay.requeued, replay.held_back
+        );
+    }
+
+    let login = stored_login(&store)?;
+    let token = token_for(login.as_deref())?;
+    let governor = governor(token)?;
+    let report = quay_sync::drain_mutations(&mut store, &governor, API, 32).await?;
+    println!(
+        "{} envoyée(s), {} annulée(s), {} différée(s)",
+        report.sent, report.rolled_back, report.deferred
+    );
+    for failure in &report.failures {
+        println!("  annulée : {failure}");
+    }
+    print_queue(&store)?;
+    Ok(())
+}
+
+fn print_queue(store: &Store) -> Outcome {
+    for state in [MutationState::Pending, MutationState::Failed] {
+        let rows = store.mutations_in_state(state)?;
+        if rows.is_empty() {
+            continue;
+        }
+        println!("file {} : {} entrée(s)", state.id(), rows.len());
+        for mutation in rows.iter().take(5) {
+            println!(
+                "  {} sur {}, {} tentative(s){}",
+                mutation.kind.id(),
+                mutation.target,
+                mutation.attempts,
+                mutation
+                    .last_error
+                    .as_deref()
+                    .map(|reason| format!(" — {reason}"))
+                    .unwrap_or_default()
+            );
+        }
+    }
+    Ok(())
+}
+
 pub async fn status() -> Outcome {
     let store = open_store()?;
     let login = stored_login(&store)?;
@@ -260,6 +359,8 @@ pub async fn status() -> Outcome {
             .query_row("SELECT COUNT(*) FROM repo", [], |row| row.get(0))?;
     println!("local     {stored} pull request(s) ouverte(s) sur {repositories} dépôt(s)");
     println!("base      {}", store.path().display());
+    println!("durabilité {:?}", store.durability());
+    print_queue(&store)?;
     report_capabilities(&Capabilities::from_identity(&identity));
     Ok(())
 }

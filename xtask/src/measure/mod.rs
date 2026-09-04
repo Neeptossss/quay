@@ -1,3 +1,4 @@
+pub mod durability;
 pub mod inbox_real;
 pub mod j1a;
 pub mod j1b;

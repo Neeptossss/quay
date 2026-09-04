@@ -1,0 +1,39 @@
+{
+  "iterations": 2000,
+  "machine": "aarch64-macos",
+  "measured_at": "2026-09-04T15:53:50.296738Z",
+  "operation": "optimistic approve: one transaction, one update and one queue insert",
+  "rows": [
+    {
+      "fullfsync": false,
+      "guarantee": "process_crash_safe",
+      "percentiles": {
+        "max": 2.056,
+        "mean": 0.019328705499999987,
+        "min": 0.012,
+        "p50": 0.015084,
+        "p95": 0.026917,
+        "p99": 0.0415,
+        "samples": 2000
+      },
+      "raw_log": "measurements/raw/durability-2026-09-04T155350.296738Z-process_crash_safe.csv",
+      "synchronous": "NORMAL"
+    },
+    {
+      "fullfsync": true,
+      "guarantee": "power_loss_safe",
+      "percentiles": {
+        "max": 10.8195,
+        "mean": 4.022496826000003,
+        "min": 1.9178330000000001,
+        "p50": 3.9958750000000003,
+        "p95": 4.674416,
+        "p99": 5.965041,
+        "samples": 2000
+      },
+      "raw_log": "measurements/raw/durability-2026-09-04T155350.296738Z-power_loss_safe.csv",
+      "synchronous": "FULL"
+    }
+  ],
+  "scenario": "durability"
+}

@@ -119,6 +119,11 @@ impl OutboundRequest {
         }
     }
 
+    pub fn with_method(mut self, method: Method) -> Self {
+        self.method = method;
+        self
+    }
+
     pub fn revalidating(mut self, validators: Option<CacheValidators>) -> Self {
         self.validators = validators;
         self

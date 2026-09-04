@@ -44,6 +44,14 @@ pub enum ForgeError {
     #[error("the forge knows no {what}")]
     MissingResource { what: String },
 
+    #[error(
+        "the credential store did not answer within {seconds}s; it is most likely waiting for an \
+         authorisation this terminal cannot show. Rebuilding the binary changes its signature and \
+         makes the system ask again. Set QUAY_TEST_TOKEN for this session, or run the binary once \
+         from a graphical session and allow it."
+    )]
+    CredentialStoreDidNotAnswer { seconds: u64 },
+
     #[error("the operating system credential store refused the request: {0}")]
     CredentialStore(String),
 

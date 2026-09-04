@@ -1,8 +1,25 @@
+use std::sync::mpsc;
+use std::time::Duration;
+
 use crate::error::ForgeError;
 use crate::token::Token;
 
+pub const DEFAULT_DEADLINE: Duration = Duration::from_secs(5);
+
 pub struct Keychain {
     service: String,
+}
+
+pub fn within_deadline<T, F>(deadline: Duration, work: F) -> Option<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let (sender, receiver) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = sender.send(work());
+    });
+    receiver.recv_timeout(deadline).ok()
 }
 
 impl Keychain {
@@ -19,11 +36,29 @@ impl Keychain {
     }
 
     pub fn load(&self, account: &str) -> Result<Option<Token>, ForgeError> {
-        match self.entry(account)?.get_password() {
-            Ok(secret) => Ok(Some(Token::new(secret))),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(error) => Err(describe(error)),
-        }
+        self.load_within(account, DEFAULT_DEADLINE)
+    }
+
+    pub fn load_within(
+        &self,
+        account: &str,
+        deadline: Duration,
+    ) -> Result<Option<Token>, ForgeError> {
+        let service = self.service.clone();
+        let account = account.to_owned();
+        let read = move || -> Result<Option<Token>, ForgeError> {
+            match keyring::Entry::new(&service, &account)
+                .map_err(describe)?
+                .get_password()
+            {
+                Ok(secret) => Ok(Some(Token::new(secret))),
+                Err(keyring::Error::NoEntry) => Ok(None),
+                Err(error) => Err(describe(error)),
+            }
+        };
+        within_deadline(deadline, read).unwrap_or(Err(ForgeError::CredentialStoreDidNotAnswer {
+            seconds: deadline.as_secs(),
+        }))
     }
 
     pub fn delete(&self, account: &str) -> Result<(), ForgeError> {
@@ -45,11 +80,27 @@ fn describe(error: keyring::Error) -> ForgeError {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::Keychain;
+    use std::time::Duration;
+
+    use super::{Keychain, within_deadline};
     use crate::token::Token;
 
     fn service() -> String {
         format!("quay.test.{}", std::process::id())
+    }
+
+    #[test]
+    fn work_that_answers_in_time_is_returned() {
+        assert_eq!(within_deadline(Duration::from_secs(5), || 7), Some(7));
+    }
+
+    #[test]
+    fn work_that_never_answers_gives_up_instead_of_blocking_the_process() {
+        let slow = || {
+            std::thread::sleep(Duration::from_secs(30));
+            7
+        };
+        assert_eq!(within_deadline(Duration::from_millis(50), slow), None);
     }
 
     #[test]
