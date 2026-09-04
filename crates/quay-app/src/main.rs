@@ -1,8 +1,6 @@
 #![forbid(unsafe_code)]
 
-mod paths;
-mod render;
-mod session;
+use quay_app::{paths, session};
 
 use std::process::ExitCode;
 
@@ -43,6 +41,7 @@ fn main() -> ExitCode {
             session::query(&arguments[1..].join(" "))
         }
         Some("complete") => session::complete(&arguments[1..].join(" ")),
+        Some("keys") => runtime.block_on(session::keys(arguments.get(1).map(String::as_str))),
         Some("show") => match arguments.get(1) {
             Some(locator) => session::show(locator),
             None => return usage(),
@@ -79,6 +78,7 @@ fn usage() -> ExitCode {
     eprintln!("  view     <nom> exécuter une vue sauvegardée");
     eprintln!("  query    <dsl> exécuter une requête ponctuelle");
     eprintln!("  complete <début> proposer la suite d'une requête");
+    eprintln!("  keys     [portée] carte des touches valides ici");
     eprintln!("  show     <proprietaire/depot#numero> afficher une PR depuis SQLite");
     eprintln!("  approve  <proprietaire/depot#numero> approuver, en optimiste");
     eprintln!("  push     vider la file de mutations vers la forge");

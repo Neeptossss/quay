@@ -5,6 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[lib]
+name = "quay_app"
+path = "src/lib.rs"
+
 [[bin]]
 name = "quay"
 path = "src/main.rs"

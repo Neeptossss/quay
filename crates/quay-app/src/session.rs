@@ -347,6 +347,57 @@ pub fn query(dsl: &str) -> Outcome {
     run_query(&store, dsl, &viewer, "requête ponctuelle")
 }
 
+pub async fn keys(scope: Option<&str>) -> Outcome {
+    let store = open_store()?;
+    let login = stored_login(&store)?;
+    let capabilities = match token_for(login.as_deref()) {
+        Ok(token) => {
+            let kind = token.kind();
+            let governor = governor(token)?;
+            match identify(&governor, kind).await {
+                Ok(identity) => Capabilities::from_identity(&identity),
+                Err(_) => Capabilities::from_scopes(kind, &Default::default()),
+            }
+        }
+        Err(_) => {
+            Capabilities::from_scopes(quay_forge::TokenKind::Unrecognised, &Default::default())
+        }
+    };
+
+    let wanted = scope.and_then(|name| {
+        crate::commands::Scope::ALL
+            .into_iter()
+            .find(|candidate| candidate.id() == name)
+    });
+    let scopes: Vec<crate::commands::Scope> = match wanted {
+        Some(scope) => vec![scope],
+        None => crate::commands::Scope::ALL.to_vec(),
+    };
+
+    for scope in scopes {
+        println!("— {} —", scope.id());
+        for command in crate::commands::available_in(scope, &capabilities) {
+            let bindings = command
+                .chords()
+                .iter()
+                .map(crate::keys::KeyChord::render)
+                .collect::<Vec<String>>()
+                .join(" / ");
+            let state = if command.is_enabled(&capabilities) {
+                String::new()
+            } else {
+                match command.requires {
+                    Some(capability) => format!("  (indisponible : {})", capability.id()),
+                    None => String::new(),
+                }
+            };
+            println!("  {bindings:<12} {}{state}", command.title);
+        }
+        println!();
+    }
+    Ok(())
+}
+
 pub fn complete(partial: &str) -> Outcome {
     for completion in quay_core::completions(partial) {
         println!("{}", completion.insertion);

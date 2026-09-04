@@ -1045,3 +1045,70 @@ cette information.
 L'interface : palette de commandes (§8.3), carte des touches (§8.2), et la fenêtre Tauri avec le
 store Svelte. C'est là que les budgets `keystroke_to_pixel`, `cold_start_to_first_paint` et
 `cached_pull_request_navigation` deviennent mesurables.
+
+---
+
+## Session 2026-09-04 (suite) — M1, carte des touches (§8.2) et registre de commandes (§8.3)
+
+### Ce qui a été fait
+
+`quay-app` devient une bibliothèque doublée d'un binaire, pour que le registre soit testable sans
+fenêtre. Le §5.2 n'en est pas changé : c'est une cible de plus, pas une crate de plus.
+
+- **Accords de touches** : séquences à la vim (`g i`), modificateur commande (`⌘K`), touches nommées
+  (`Enter`, `Space`, `Esc`), et la casse distingue deux liaisons parce que `Maj` fait partie de la
+  touche — `j` et `J` sont deux commandes différentes au §8.2. Une liaison vide ou une touche
+  inconnue est refusée plutôt que silencieusement ignorée.
+- **Registre typé** de 34 commandes couvrant la carte du §8.2, chacune avec son titre, ses
+  mots-clés, ses liaisons, sa portée et la capacité qu'elle exige.
+- **Filtrage par capacités** appliqué **au registre lui-même**, pas seulement au rendu, comme
+  l'exige le §8.1 : une capacité structurellement indisponible sort la commande du registre et son
+  raccourci ne résout plus rien ; une capacité récupérable par l'utilisateur la laisse visible mais
+  ne la déclenche pas.
+- **Classement flou façon fzf** : bonus au début d'un mot, à une limite de mot et à une limite de
+  casse, et non un simple `includes()`. Un test vérifie qu'un début de mot l'emporte sur les mêmes
+  lettres au milieu d'un autre.
+- **`quay keys [portée]`** rend la carte valide **ici**, ce que le §8.2 demande du `?`.
+
+### Une correction du modèle de portées
+
+Ma première version faisait hériter chaque portée de `Global` seulement. Le §8.2 place pourtant `]`
+et `}` dans la même section : dans un diff, la navigation de fichier de la pull request doit
+continuer à répondre. Les portées s'emboîtent donc en chaîne — `Diff` dans `PullRequest` dans
+`Global`, `ReviewPanel` dans `PullRequest` dans `Global`.
+
+Ce qui fait apparaître un conflit apparent : `c` est « commenter » dans une pull request et
+« demander des changements » dans le panneau de review, que le §8.2 écrit `v c`. Ce n'est pas un
+conflit, c'est du **masquage**, et c'est la raison d'être des portées. J'ai donc modélisé la
+résolution explicitement au lieu d'interdire le masquage :
+
+- aucun conflit **au sein d'une même portée déclarée** ;
+- aucun accord **préfixe** d'un autre dans une même portée, parce que là l'ambiguïté serait réelle ;
+- toute résolution rend **exactement une** commande, la plus interne.
+
+Le §8.2 écrit `v a` et `v c` par lisibilité ; l'implémentation les rend comme `v` qui ouvre le
+panneau, puis `a` ou `c` dans ce panneau. L'ambiguïté est levée par la portée, pas par un délai
+d'attente, ce qui évite le mode invisible que le §8.1 interdit.
+
+### Ce que le §8.3 exigeait et qui est tenu
+
+> « Un test vérifie que toute commande du registre est atteignable, et qu'aucun raccourci n'est en
+> conflit dans un même scope. »
+
+Dix-sept tests, dont ceux-là mot pour mot, plus l'atteignabilité de la palette depuis toutes les
+portées et la disparition d'une commande bloquée par une politique d'organisation.
+
+### Réserves
+
+- Le registre déclare les commandes ; **il ne les exécute pas**. Le §8.3 prévoit un `run` par
+  commande, qui n'a pas de sens sans un état d'interface à muter. Il arrivera avec la fenêtre.
+- Le classement « apprenant » du §8.3, pondéré par la fréquence d'usage récent, n'est pas
+  implémenté : `navigation_event` collecte la matière première depuis l'étape M1 mais rien ne la lit
+  encore, ce que le §9 prévoit explicitement pour le M1.
+- La palette « avec arguments » du §8.3, qui ouvre un second niveau de sélection, suppose une
+  interface.
+
+### Ce qu'il faut faire ensuite
+
+La fenêtre Tauri et le store Svelte. Le registre y sera exposé par l'IPC pour rester la source de
+vérité unique que le §8.3 exige, plutôt que d'être recopié en TypeScript.
