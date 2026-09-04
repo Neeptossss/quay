@@ -21,6 +21,16 @@ fn main() -> ExitCode {
         }
     };
 
+    if arguments.is_empty() || arguments.first().map(String::as_str) == Some("ui") {
+        return match quay_app::ui::run() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("la fenêtre n'a pas démarré : {error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
     let outcome = match arguments.first().map(String::as_str) {
         Some("login") => runtime.block_on(session::login()),
         Some("sync") => runtime.block_on(session::sync()),
@@ -70,6 +80,7 @@ fn main() -> ExitCode {
 
 fn usage() -> ExitCode {
     eprintln!("usage : quay <commande>");
+    eprintln!("  ui       ouvrir la fenêtre (défaut sans argument)");
     eprintln!("  login    valider un jeton et le déposer dans le trousseau");
     eprintln!("  sync     rafraîchir depuis la forge et écrire dans SQLite");
     eprintln!("  watch    [n] boucler la synchronisation au rythme annoncé par la forge");

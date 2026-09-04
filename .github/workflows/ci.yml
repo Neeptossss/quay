@@ -20,23 +20,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/desktop-system-libraries
       - run: cargo clippy --all-targets -- -D warnings
 
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/desktop-system-libraries
       - run: cargo test --workspace
 
   bench:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/desktop-system-libraries
       - run: cargo bench --workspace --no-run
       - run: cargo bench -p quay-store -- --warm-up-time 1 --measurement-time 3
+
+  desktop:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npx svelte-check --tsconfig ./tsconfig.json
+      - run: npm test
+      - run: npm run build
 
   budgets:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/desktop-system-libraries
       - run: cargo run -p xtask -- budgets

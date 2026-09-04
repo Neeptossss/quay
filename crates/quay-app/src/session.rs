@@ -34,7 +34,7 @@ fn keychain() -> quay_forge::Keychain {
     quay_forge::Keychain::for_service(KEYCHAIN_SERVICE)
 }
 
-fn stored_login(store: &Store) -> Result<Option<String>, Box<dyn Error>> {
+pub fn stored_login(store: &Store) -> Result<Option<String>, Box<dyn Error>> {
     let mut statement = store
         .connection()
         .prepare("SELECT login FROM account ORDER BY id LIMIT 1")?;

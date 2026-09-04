@@ -1112,3 +1112,65 @@ portées et la disparition d'une commande bloquée par une politique d'organisat
 
 La fenêtre Tauri et le store Svelte. Le registre y sera exposé par l'IPC pour rester la source de
 vérité unique que le §8.3 exige, plutôt que d'être recopié en TypeScript.
+
+---
+
+## Session 2026-09-04 (suite) — M1, la fenêtre
+
+### Ce qui a été fait
+
+- **Couche IPC en fonctions pures** (`quay-app/src/ipc.rs`), testée sans fenêtre : carte des
+  touches, palette, vues sauvegardées, exécution de requête, détail de pull request.
+- **La logique reste en Rust, l'IPC ne transporte que des données déjà résolues.** La carte rendue
+  au frontend est **plate** : un accord, une commande, un état d'activation. La chaîne de portées et
+  le masquage du §8.2 ont déjà été appliqués côté Rust. Un test le fige nommément — dans le panneau
+  de review, `c` arrive au frontend en désignant déjà `review.request_changes`. Le frontend ne
+  recopie donc aucune règle, il fait une consultation de table.
+- **Coque Tauri 2** avec sept commandes IPC, et **frontend Svelte 5** avec Vite : liste dense,
+  palette, vue de détail, lecture d'accords, instrumentation `frappe → pixel`.
+- **Direction visuelle du §8.5** : lignes de 28 px, un seul accent réservé au focus et à l'état
+  actionnable, la couleur ailleurs n'encode que l'état de CI et de review, pas d'ombre portée, pas de
+  carte arrondie, la hiérarchie passe par l'espacement et les filets, une famille à chasse variable
+  pour l'interface et une à chasse fixe pour les identifiants. Le mouvement est sous
+  `prefers-reduced-motion`. L'écran vide est une invitation portant le raccourci.
+- **Seize tests frontend** sur la logique pure : lecture d'accords, séquences en attente, casse
+  significative, abandon d'une séquence que rien ne complète, encodage d'état. `svelte-check` passe
+  sans erreur ni avertissement.
+- **CI** : un job `desktop` pour le frontend, et les bibliothèques système de la webview installées
+  avant les jobs Rust.
+
+### Ce que je ne peux pas affirmer
+
+**La fenêtre s'ouvre et le processus tient, mais je n'ai pas vu ce qui est peint.** La capture
+d'écran est refusée faute d'autorisation d'enregistrement de l'écran, et l'interrogation du serveur
+de fenêtres expire faute d'autorisation d'accessibilité. Ce qui est vérifié : le processus démarre et
+survit, le bundle se construit, le typage passe, et le chemin de données que la fenêtre emprunte est
+le même que celui qu'exercent `quay view` et `quay keys`, tous deux vérifiés sur les données réelles.
+Ce qui ne l'est pas : les pixels. Il faut un œil humain.
+
+De même, **les budgets `keystroke_to_pixel` et `cold_start_to_first_paint` restent `MISSING`.**
+L'instrumentation existe et la barre d'état affiche le p99 dès qu'il y a des frappes, mais aucune
+mesure n'a été relevée ni écrite dans `measurements/`. Un p99 de frappe demande un humain qui tape.
+
+### Réserves
+
+- Les capacités du §3.7 démarrent toutes en `Unknown`, ce que le §3.7 dit de traiter comme
+  disponible pour ne pas bloquer par précaution. Le sondage actif et le rafraîchissement en arrière-
+  plan ne sont pas branchés : la fenêtre n'appelle pas le réseau au démarrage, précisément à cause du
+  budget de 400 ms. Il faudra un événement `capabilities_changed` émis après le sondage.
+- Le frontend consomme les commandes IPC mais **n'écoute encore aucun événement** du cœur. Le §5.4
+  demande `inbox_changed`, `pr_updated`, `sync_state` et `mutation_failed`. Sans eux, la fenêtre ne
+  se met pas à jour quand la boucle de synchronisation écrit.
+- La palette n'a pas encore le second niveau de sélection à arguments du §8.3, ni le classement
+  pondéré par la fréquence d'usage récent.
+- La liste n'est pas virtualisée. Avec 34 lignes réelles cela ne se voit pas ; le §5.1 l'exige et le
+  budget de 16 ms le rendra visible bien avant 500 lignes.
+- `run` par commande n'existe toujours pas côté Rust : c'est le frontend qui interprète l'identifiant
+  de commande. Le registre reste la source de vérité pour ce qui **existe** et ce qui est
+  **atteignable** ; l'exécution est côté interface tant qu'il n'y a pas d'état partagé à muter.
+
+### Ce qu'il faut faire ensuite
+
+1. Regarder la fenêtre, et me dire ce qui ne va pas.
+2. Les événements du §5.4, sans lesquels la fenêtre est un instantané.
+3. La virtualisation de la liste, puis les mesures de `keystroke_to_pixel` et de démarrage à froid.
