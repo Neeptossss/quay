@@ -2,7 +2,7 @@
 
 Ce fichier est généré par `cargo run -p xtask -- report` à partir des logs bruts de `measurements/raw/`. Il ne se modifie pas à la main.
 
-- Généré le : 2026-09-04T16:43:13.097247Z
+- Généré le : 2026-09-04T17:35:05.389944Z
 - Machine : aarch64-macos
 
 ## Budgets du §4
@@ -11,7 +11,7 @@ Ce fichier est généré par `cargo run -p xtask -- report` à partir des logs b
 
 | Budget | Réf. | Borne | Statistique | Instrument | Mesure | Verdict | Log brut |
 |---|---|---|---|---|---|---|---|
-| `cold_start_to_first_paint` (cold start to first painted list) | §4 | ≤ 400 ms | median | tauri trace, process start to paint | — | **MISSING** | — |
+| `cold_start_to_first_paint` (cold start to first painted list) | §4 | ≤ 400 ms | median | tauri trace, process start to paint | 4387.487 ms | **OVER** | `measurements/raw/cold-start-2026-09-04T173358.599415Z.jsonl` |
 | `keystroke_to_pixel` (keystroke to updated pixel) | §4 | ≤ 16 ms | p99 | frontend instrumentation, performance.now() | — | **MISSING** | — |
 | `cached_pull_request_navigation` (navigation to the next pull request from cache) | §4 | ≤ 50 ms | median | frontend instrumentation, performance.now() | — | **MISSING** | — |
 | `inbox_query` (filtered inbox query on SQLite) | §4 | ≤ 5 ms | p99 | xtask measure j1b, reference dataset | 0.091 ms | **MET** | `measurements/raw/j1b-2026-09-04T151630.145759Z-corrected-20repos-300open-0closed-5000comments-review_requested_exact-warm.csv` |
@@ -20,6 +20,21 @@ Ce fichier est généré par `cargo run -p xtask -- report` à partir des logs b
 | `background_cpu_idle` (cpu at rest, window in the background) | §4 | ≤ 0.5 % | mean | process measurement | — | **MISSING** | — |
 | `github_quota_per_hour` (GitHub quota consumed in normal operation) | §4 | ≤ 1500 req/h | max | rate governor counter | — | **MISSING** | — |
 | `cache_served_navigations` (navigations served from cache in under 50 ms) | §4 | ≥ 85 % | sliding window | preload_outcome | — | **MISSING** | — |
+
+## Démarrage à froid — §4
+
+- Mesuré le : 2026-09-04T17:33:58.599415Z
+- Lancements : 5
+- Log brut : `measurements/raw/cold-start-2026-09-04T173358.599415Z.jsonl`
+
+Chaque phase est cumulée depuis le démarrage du processus.
+
+| Phase | p50 ms | p95 ms | max ms | Lancements retenus |
+|---|---|---|---|---|
+| store opened | 2 | 2 | 2 | 5 |
+| setup finished | 2197 | 2217 | 2217 | 5 |
+| frontend bundle running | 2311 | 2353 | 2353 | 5 |
+| first paint | 4387 | 4407 | 4407 | 3 |
 
 ## Durabilité des écritures — §6 face au §7.3
 

@@ -1,0 +1,58 @@
+{
+  "binary": "/Users/neptos/Workspace/Perso/quay/target/release/quay",
+  "launches": 5,
+  "machine": "aarch64-macos",
+  "measured_at": "2026-09-04T17:33:58.599415Z",
+  "raw_log": "measurements/raw/cold-start-2026-09-04T173358.599415Z.jsonl",
+  "rows": [
+    {
+      "percentiles": {
+        "max": 2.194917,
+        "mean": 1.6555583999999999,
+        "min": 1.325583,
+        "p50": 1.566834,
+        "p95": 2.194917,
+        "p99": 2.194917,
+        "samples": 5
+      },
+      "phase": "store opened"
+    },
+    {
+      "percentiles": {
+        "max": 2216.626167,
+        "mean": 2203.4059582,
+        "min": 2191.585917,
+        "p50": 2196.976166,
+        "p95": 2216.626167,
+        "p99": 2216.626167,
+        "samples": 5
+      },
+      "phase": "setup finished"
+    },
+    {
+      "percentiles": {
+        "max": 2353.281625,
+        "mean": 2320.7507084,
+        "min": 2303.425042,
+        "p50": 2310.6095,
+        "p95": 2353.281625,
+        "p99": 2353.281625,
+        "samples": 5
+      },
+      "phase": "frontend bundle running"
+    },
+    {
+      "percentiles": {
+        "max": 4406.908291,
+        "mean": 4385.6945276666665,
+        "min": 4362.687916999999,
+        "p50": 4387.487375,
+        "p95": 4406.908291,
+        "p99": 4406.908291,
+        "samples": 3
+      },
+      "phase": "first paint"
+    }
+  ],
+  "scenario": "cold-start"
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Ce que la fenêtre a le droit de demander au cœur. Sans `core:event:default` le webview ne peut pas écouter les événements du §5.4, et la liste reste un instantané.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

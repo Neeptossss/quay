@@ -245,3 +245,12 @@ fn ranking_never_offers_a_command_from_an_unrelated_scope() {
     let ranked = rank("", Scope::List, &capabilities);
     assert!(!ranked.iter().any(|found| found.id == "pr.merge"));
 }
+
+#[test]
+fn the_window_serves_the_frontend_it_carries_rather_than_a_development_server() {
+    assert!(
+        quay_app::ui::serves_embedded_frontend(),
+        "without the custom-protocol feature tauri points the webview at devUrl, \
+         which nothing serves outside `tauri dev`, and the window paints nothing"
+    );
+}

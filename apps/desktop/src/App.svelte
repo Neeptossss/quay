@@ -4,8 +4,16 @@
   import Row from "./Row.svelte";
   import { ChordReader, tokenOf } from "./keys";
   import { measurePaint, observed, percentile } from "./latency";
+  import { ROW_HEIGHT, scrollToKeep, windowOf } from "./virtual";
   import * as ipc from "./ipc";
-  import type { CommandEntry, InboxEntry, PullRequestEntry, Scope, ViewEntry } from "./ipc";
+  import type {
+    CommandEntry,
+    InboxEntry,
+    PullRequestEntry,
+    Scope,
+    SyncState,
+    ViewEntry,
+  } from "./ipc";
 
   let views: ViewEntry[] = $state([]);
   let entries: InboxEntry[] = $state([]);
@@ -20,16 +28,53 @@
   let paletteCursor = $state(0);
 
   let pending = $state("");
+  let sync: SyncState | null = $state(null);
+  let coldStart: number | null = $state(null);
+  let list: HTMLDivElement | undefined = $state();
+  let scrollTop = $state(0);
+  let viewport = $state(800);
+  let rendered = $derived(windowOf(entries.length, scrollTop, viewport));
   let scope: Scope = $derived(paletteOpen ? "global" : opened ? "pull_request" : "list");
   let reader = new ChordReader([]);
   let bindings: ipc.KeyBinding[] = $state([]);
 
-  $effect(() => {
-    ipc.keyMap(scope).then((map) => {
+  async function loadKeyMap(current: Scope) {
+    try {
+      const map = await ipc.keyMap(current);
       bindings = map;
       reader.replace(map);
       pending = "";
-    });
+    } catch (error) {
+      failure = String(error);
+    }
+  }
+
+  $effect(() => {
+    void loadKeyMap(scope);
+  });
+
+  $effect(() => {
+    const attaching = [
+      ipc.onInboxChanged(() => {
+        if (currentView) void openView(currentView, false);
+      }),
+      ipc.onSyncState((state) => {
+        sync = state;
+      }),
+      ipc.onCapabilitiesChanged(() => {
+        void loadKeyMap(scope);
+      }),
+    ];
+    for (const attachment of attaching) {
+      attachment.catch((error) => {
+        failure = `la fenêtre ne peut pas écouter le cœur : ${error}`;
+      });
+    }
+    return () => {
+      for (const attachment of attaching) {
+        attachment.then((stop) => stop()).catch(() => {});
+      }
+    };
   });
 
   async function boot() {
@@ -40,14 +85,37 @@
     } catch (error) {
       failure = String(error);
     }
+    try {
+      sync = await ipc.syncState();
+    } catch (error) {
+      failure = failure ?? String(error);
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        ipc
+          .firstPaint()
+          .then((milliseconds) => {
+            coldStart = milliseconds;
+            return ipc.syncNow();
+          })
+          .catch(() => {});
+      });
+    });
   }
 
-  async function openView(name: string) {
+  async function openView(name: string, reset = true) {
     try {
-      entries = await ipc.runView(name);
+      const loaded = await ipc.runView(name);
+      entries = loaded;
       currentView = name;
-      cursor = 0;
-      opened = null;
+      if (reset) {
+        cursor = 0;
+        opened = null;
+        scrollTop = 0;
+        if (list) list.scrollTop = 0;
+      } else {
+        cursor = Math.min(cursor, Math.max(0, loaded.length - 1));
+      }
       failure = null;
     } catch (error) {
       failure = String(error);
@@ -73,6 +141,13 @@
   function move(delta: number) {
     if (entries.length === 0) return;
     cursor = Math.min(entries.length - 1, Math.max(0, cursor + delta));
+    keepCursorVisible();
+  }
+
+  function keepCursorVisible() {
+    if (!list) return;
+    const wanted = scrollToKeep(cursor, list.scrollTop, list.clientHeight);
+    if (wanted !== list.scrollTop) list.scrollTop = wanted;
   }
 
   async function dispatch(command: string) {
@@ -98,9 +173,11 @@
         break;
       case "list.first":
         cursor = 0;
+        keepCursorVisible();
         break;
       case "list.last":
         cursor = Math.max(0, entries.length - 1);
+        keepCursorVisible();
         break;
       case "list.open":
         await openCursor();
@@ -199,10 +276,21 @@
       Rien à relire ici. <kbd>⌘K</kbd> ouvre la palette, <kbd>g i</kbd> revient à l'inbox.
     </div>
   {:else}
-    <div class="list" role="listbox" tabindex="-1">
-      {#each entries as entry, index (entry.key)}
-        <Row {entry} selected={index === cursor} />
+    <div
+      class="list"
+      role="listbox"
+      tabindex="-1"
+      bind:this={list}
+      bind:clientHeight={viewport}
+      onscroll={(event) => {
+        scrollTop = (event.currentTarget as HTMLDivElement).scrollTop;
+      }}
+    >
+      <div class="spacer" style="height: {rendered.above}px"></div>
+      {#each entries.slice(rendered.first, rendered.first + rendered.count) as entry, offset (entry.key)}
+        <Row {entry} selected={rendered.first + offset === cursor} />
       {/each}
+      <div class="spacer" style="height: {rendered.below}px"></div>
     </div>
   {/if}
 
@@ -215,6 +303,13 @@
       {#if observed() > 0}{percentile(0.99)?.toFixed(1)} ms sur {observed()}{:else}non mesuré{/if}
     </span>
     <span>{bindings.length} raccourci(s) ici</span>
+    {#if sync}
+      <span class={sync.healthy ? "" : "pending"}>{sync.phase} · {sync.detail}</span>
+    {/if}
+    <span>{ROW_HEIGHT * entries.length}px virtualisés</span>
+    <span>
+      démarrage {#if coldStart === null}non mesuré{:else}{coldStart.toFixed(0)} ms{/if}
+    </span>
   </div>
 </div>
 

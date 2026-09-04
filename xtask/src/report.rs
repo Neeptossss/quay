@@ -20,6 +20,7 @@ pub fn generate() -> Result<PathBuf, Box<dyn Error>> {
     writeln!(page, "- Machine : {}\n", crate::machine())?;
 
     write_budgets(&mut page)?;
+    write_cold_start(&mut page)?;
     write_durability(&mut page)?;
     write_inbox_real(&mut page)?;
     write_m0_1(&mut page)?;
@@ -72,6 +73,50 @@ fn write_budgets(page: &mut String) -> Result<(), Box<dyn Error>> {
             measured,
             status.verdict.label(),
             raw_log
+        )?;
+    }
+    writeln!(page)?;
+    Ok(())
+}
+
+fn write_cold_start(page: &mut String) -> Result<(), Box<dyn Error>> {
+    writeln!(page, "## Démarrage à froid — §4\n")?;
+    let Some(summary) = load("cold-start") else {
+        writeln!(
+            page,
+            "Pas encore mesuré. Lancer `cargo run -p xtask -- measure cold-start`.\n"
+        )?;
+        return Ok(());
+    };
+    writeln!(
+        page,
+        "- Mesuré le : {}",
+        text(&summary, "/measured_at", "inconnu")
+    )?;
+    writeln!(page, "- Lancements : {}", number(&summary, "/launches"))?;
+    writeln!(
+        page,
+        "- Log brut : `{}`\n",
+        text(&summary, "/raw_log", "inconnu")
+    )?;
+    writeln!(
+        page,
+        "Chaque phase est cumulée depuis le démarrage du processus.\n"
+    )?;
+    writeln!(
+        page,
+        "| Phase | p50 ms | p95 ms | max ms | Lancements retenus |"
+    )?;
+    writeln!(page, "|---|---|---|---|---|")?;
+    for row in &rows(&summary) {
+        writeln!(
+            page,
+            "| {} | {:.0} | {:.0} | {:.0} | {} |",
+            text(row, "/phase", "?"),
+            float(row, "/percentiles/p50"),
+            float(row, "/percentiles/p95"),
+            float(row, "/percentiles/max"),
+            number(row, "/percentiles/samples")
         )?;
     }
     writeln!(page)?;

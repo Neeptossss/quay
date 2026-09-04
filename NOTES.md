@@ -1174,3 +1174,106 @@ mesure n'a été relevée ni écrite dans `measurements/`. Un p99 de frappe dema
 1. Regarder la fenêtre, et me dire ce qui ne va pas.
 2. Les événements du §5.4, sans lesquels la fenêtre est un instantané.
 3. La virtualisation de la liste, puis les mesures de `keystroke_to_pixel` et de démarrage à froid.
+
+---
+
+## Session 2026-09-04 (suite) — la fenêtre blanche, et ce qu'elle cachait
+
+### La cause de la fenêtre blanche
+
+`tauri-build` émet `cfg(dev)` dès que la fonctionnalité `custom-protocol` du crate `tauri` n'est pas
+activée — son code est littéralement `let dev = !custom_protocol`. En mode `dev`, Tauri pointe le
+webview sur `devUrl`, c'est-à-dire le serveur Vite, que rien ne servait. **La fenêtre chargeait donc
+une adresse morte, sans erreur ni journal.** La CLI Tauri active cette fonctionnalité pour les builds
+de release ; comme je ne l'utilise pas, personne ne le faisait.
+
+Un indice était passé sous mon nez : j'avais retiré `apps/desktop/dist` et constaté que la
+compilation ne cassait pas, et j'en avais conclu « Tauri tolère l'absence du bundle ». La vraie
+explication était qu'il ne le lisait pas du tout. J'ai écrit une conclusion là où j'aurais dû lire un
+symptôme.
+
+Corrigé par une fonctionnalité `embedded-frontend` activée par défaut, et figé par un test :
+`the_window_serves_the_frontend_it_carries_rather_than_a_development_server`.
+
+**La CSP n'était pas en cause.** Je l'avais désactivée pour tester et je l'ai remise, vérification
+faite : la fenêtre rend avec `default-src 'self'`.
+
+### La deuxième cause, cachée derrière la première
+
+Une fois la fenêtre peinte, la barre d'état restait figée sur `identifying`. Le journal montrait
+pourtant la boucle qui tournait : `/user` 200, `/notifications` **304**, deux recherches 200. Ce
+n'étaient donc pas les événements qui n'étaient pas émis, c'était le webview qui ne pouvait pas les
+écouter : **Tauri 2 refuse les commandes de ses greffons de cœur tant qu'une capacité ne les accorde
+pas.** Les commandes propres à l'application marchaient, `listen` non.
+
+`capabilities/default.json` accorde `core:default` à la fenêtre `main`. Et le frontend **remonte
+désormais l'échec d'abonnement** au lieu de l'avaler, ce qui aurait fait gagner une demi-heure.
+
+### Ce qui a été corrigé dans la foulée
+
+- **Focus visible** (§8.1) : mon état sélectionné était exactement « une nuance de fond de 3 % » que
+  le §8.1 interdit. Il porte maintenant un liseré d'accent et un titre en gras.
+- **Liste virtualisée** (§5.1) : seule une fenêtre de lignes est rendue, les hauteurs manquantes sont
+  réservées par deux cales. Un test monte 4 000 entrées et vérifie qu'il s'en peint moins de 200.
+- **Boucle de synchronisation dans la fenêtre**, avec les événements `sync_state`, `inbox_changed` et
+  `capabilities_changed` du §5.4. Les capacités partent d'`Unknown` puis sont remplacées après le
+  sondage, ce qui rafraîchit la carte des touches.
+- **Course au démarrage supprimée** : les premiers événements partaient avant que le webview n'ait
+  posé ses écouteurs. Le cœur garde donc le dernier état et la fenêtre le lit au montage, plutôt que
+  de masquer la course par un délai.
+- Le premier échec rencontré au démarrage n'est plus écrasé par un échec accessoire. Trouvé par un
+  test, pas à l'œil.
+
+### Démarrage à froid : mesuré, et **dépassé d'un facteur 11**
+
+`cargo run -p xtask -- measure cold-start` lance le binaire cinq fois et lit les phases dans son
+journal. Cumul depuis le démarrage du processus :
+
+| Phase | p50 |
+|---|---|
+| Base SQLite ouverte | **2 ms** |
+| Tauri prêt, fenêtre créée | 2 197 ms |
+| Bundle JS démarré | 2 311 ms |
+| **Première liste peinte** | **4 387 ms** |
+
+Le budget du §4 est de **400 ms**. Le budget passe donc de `MISSING` à **`OVER`**, ce qui est plus
+honnête.
+
+**Ce que la mesure dit clairement : le magasin ne coûte rien.** 2 ms sur 4 387, soit 0,05 %. Tout le
+temps est dans la coque desktop, en deux moitiés presque égales : environ 2,2 s avant que Tauri rende
+la main, puis environ 2,1 s avant la première image composée.
+
+Hypothèse testée et **réfutée** : un binaire nu hors bundle `.app`. Un `.app` signé ad-hoc donne
+4 528 ms et 4 424 ms, soit la même chose. Ce n'est donc ni Gatekeeper ni l'absence de bundle.
+
+**Le §12 dit de m'arrêter quand un budget est manqué d'un facteur supérieur à 2 sans cause claire.**
+J'ai une cause localisée — l'initialisation de la coque — mais pas de cause racine ni de correctif.
+Trois pistes, aucune mesurée :
+
+1. WKWebView démarre des processus auxiliaires ; leur coût est peut-être incompressible sur cette
+   machine et il faudrait le comparer à une application Tauri vide pour le savoir.
+2. La fenêtre pourrait être affichée **avant** que le frontend ne soit prêt, avec la liste peinte
+   ensuite. Cela améliorerait le ressenti sans changer la mesure telle qu'elle est définie.
+3. Le §4 mesure « démarrage à froid → première liste peinte ». Si l'application est faite pour rester
+   ouverte huit heures, ce budget est peut-être le mauvais indicateur — mais c'est une question de
+   spécification, pas une décision que je prends seul.
+
+### Ce qui reste non mesuré, et pourquoi
+
+`keystroke_to_pixel` reste `MISSING`. L'instrumentation existe et la barre d'état affiche le p99, mais
+`osascript` n'est pas autorisé à envoyer des frappes depuis ce terminal. Il faut taper à la main dans
+la fenêtre. Je ne fabrique pas de chiffre à la place.
+
+### Une erreur de méthode que je signale
+
+Ma commande de vérification faisait la somme des tests réussis. Elle a donc **masqué un test rouge**
+dans `xtask` pendant deux tours. Le test avait raison : mon analyseur du journal de démarrage lisait
+le `0` de la séquence d'échappement `[0m` comme la valeur mesurée. En production `NO_COLOR=1` le
+masquait, ce qui rendait le défaut invisible sans le supprimer. Corrigé en retirant les séquences
+d'échappement, et la vérification affiche désormais les échecs au lieu de compter les succès.
+
+### Ce qu'il faut faire ensuite
+
+1. Trancher le démarrage à froid, cf. les trois pistes ci-dessus.
+2. Taper dans la fenêtre pour que `keystroke_to_pixel` existe.
+3. La palette à arguments et le classement appris du §8.3, le `run` par commande côté cœur.

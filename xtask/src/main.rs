@@ -31,6 +31,7 @@ fn main() -> ExitCode {
         (Some("measure"), Some("m0-1")) => measure_command(Scenario::M01),
         (Some("measure"), Some("inbox-real")) => measure_command(Scenario::InboxReal),
         (Some("measure"), Some("durability")) => measure_command(Scenario::Durability),
+        (Some("measure"), Some("cold-start")) => measure_command(Scenario::ColdStart),
         (Some("measure"), Some("j1a")) => measure_command(Scenario::J1a),
         (Some("measure"), Some("j1b")) => measure_command(Scenario::J1b),
         (Some("measure"), Some("all")) => measure_command(Scenario::All),
@@ -41,6 +42,7 @@ fn main() -> ExitCode {
 }
 
 enum Scenario {
+    ColdStart,
     Durability,
     InboxReal,
     M01,
@@ -55,6 +57,7 @@ fn usage() -> ExitCode {
     eprintln!("  measure m0-1   probe which authentication the notifications endpoint accepts");
     eprintln!("  measure inbox-real  time the inbox against the database the quay binary filled");
     eprintln!("  measure durability  time an optimistic mutation at each synchronous setting");
+    eprintln!("  measure cold-start  time the desktop shell from launch to the first painted list");
     eprintln!("  measure j1a    measure the GraphQL pull request detail breaking point");
     eprintln!("  measure j1b    measure the inbox query against the reference dataset");
     eprintln!("  measure all    run both measurements");
@@ -124,6 +127,29 @@ fn measure_command(scenario: Scenario) -> ExitCode {
             }
             Err(error) => {
                 eprintln!("J1-b failed: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    if matches!(scenario, Scenario::ColdStart) {
+        match measure::cold_start::measure(&started_at) {
+            Ok(cold) => {
+                if let Some(budget) = measure::cold_start::budget_summary(&cold, &started_at)
+                    && let Err(error) =
+                        budget.save(&paths::summaries().join("cold_start_to_first_paint.json"))
+                {
+                    eprintln!("the cold start budget could not be written: {error}");
+                    return ExitCode::FAILURE;
+                }
+                let summary = measure::cold_start::summary(&cold, &started_at);
+                if let Err(error) = measure::write_scenario_summary("cold-start", summary) {
+                    eprintln!("the cold start summary could not be written: {error}");
+                    return ExitCode::FAILURE;
+                }
+            }
+            Err(error) => {
+                eprintln!("the cold start measurement failed: {error}");
                 return ExitCode::FAILURE;
             }
         }

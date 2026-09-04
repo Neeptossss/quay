@@ -6,4 +6,9 @@ export default defineConfig({
   clearScreen: false,
   server: { port: 5173, strictPort: true },
   build: { target: "safari16", sourcemap: true },
+  resolve: { conditions: ["browser"] },
+  test: {
+    environment: "happy-dom",
+    include: ["tests/**/*.test.ts"],
+  },
 });

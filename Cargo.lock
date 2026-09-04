@@ -3421,6 +3421,7 @@ dependencies = [
  "tempfile",
  "time",
  "tokio",
+ "tracing",
  "tracing-subscriber",
 ]
 

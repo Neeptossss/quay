@@ -16,7 +16,7 @@ use time::OffsetDateTime;
 use crate::paths;
 use crate::render;
 
-const API: &str = "https://api.github.com";
+pub const API: &str = "https://api.github.com";
 const KEYCHAIN_SERVICE: &str = "quay";
 const TOKEN_VARIABLE: &str = "QUAY_TEST_TOKEN";
 
@@ -45,7 +45,7 @@ pub fn stored_login(store: &Store) -> Result<Option<String>, Box<dyn Error>> {
     }
 }
 
-fn token_for(login: Option<&str>) -> Result<Token, Box<dyn Error>> {
+pub fn token_for_login(login: Option<&str>) -> Result<Token, Box<dyn Error>> {
     if let Some(token) = Token::from_env(TOKEN_VARIABLE) {
         return Ok(token);
     }
@@ -60,7 +60,7 @@ fn token_for(login: Option<&str>) -> Result<Token, Box<dyn Error>> {
     }
 }
 
-fn governor(token: Token) -> Result<Arc<RateGovernor>, Box<dyn Error>> {
+pub fn governor_for(token: Token) -> Result<Arc<RateGovernor>, Box<dyn Error>> {
     Ok(Arc::new(RateGovernor::new(
         GovernorConfig::default(),
         Some(token),
@@ -68,7 +68,7 @@ fn governor(token: Token) -> Result<Arc<RateGovernor>, Box<dyn Error>> {
     )?))
 }
 
-async fn identify(
+pub async fn identify(
     governor: &RateGovernor,
     kind: quay_forge::TokenKind,
 ) -> Result<Identity, Box<dyn Error>> {
@@ -92,7 +92,7 @@ pub async fn login() -> Outcome {
         format!("définir ${TOKEN_VARIABLE} avant `quay login` ; le jeton n'est jamais lu depuis un fichier")
     })?;
     let kind = token.kind();
-    let governor = governor(token.clone())?;
+    let governor = governor_for(token.clone())?;
     let identity = identify(&governor, kind).await?;
 
     keychain().store(&identity.login, &token)?;
@@ -150,9 +150,9 @@ struct Session {
 async fn open_session() -> Result<Session, Box<dyn Error>> {
     let store = open_store()?;
     let login = stored_login(&store)?;
-    let token = token_for(login.as_deref())?;
+    let token = token_for_login(login.as_deref())?;
     let kind = token.kind();
-    let governor = governor(token)?;
+    let governor = governor_for(token)?;
     let identity = identify(&governor, kind).await?;
     let account_id = store.remember_account(
         "api.github.com",
@@ -350,10 +350,10 @@ pub fn query(dsl: &str) -> Outcome {
 pub async fn keys(scope: Option<&str>) -> Outcome {
     let store = open_store()?;
     let login = stored_login(&store)?;
-    let capabilities = match token_for(login.as_deref()) {
+    let capabilities = match token_for_login(login.as_deref()) {
         Ok(token) => {
             let kind = token.kind();
-            let governor = governor(token)?;
+            let governor = governor_for(token)?;
             match identify(&governor, kind).await {
                 Ok(identity) => Capabilities::from_identity(&identity),
                 Err(_) => Capabilities::from_scopes(kind, &Default::default()),
@@ -551,8 +551,8 @@ pub async fn push() -> Outcome {
     }
 
     let login = stored_login(&store)?;
-    let token = token_for(login.as_deref())?;
-    let governor = governor(token)?;
+    let token = token_for_login(login.as_deref())?;
+    let governor = governor_for(token)?;
     let report = quay_sync::drain_mutations(&mut store, &governor, API, 32).await?;
     println!(
         "{} envoyée(s), {} annulée(s), {} différée(s)",
@@ -592,9 +592,9 @@ fn print_queue(store: &Store) -> Outcome {
 pub async fn status() -> Outcome {
     let store = open_store()?;
     let login = stored_login(&store)?;
-    let token = token_for(login.as_deref())?;
+    let token = token_for_login(login.as_deref())?;
     let kind = token.kind();
-    let governor = governor(token)?;
+    let governor = governor_for(token)?;
     let identity = identify(&governor, kind).await?;
 
     println!("compte    {} ({})", identity.login, kind.label());

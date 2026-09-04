@@ -5,6 +5,7 @@ use quay_app::{paths, session};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    let started = std::time::Instant::now();
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -22,7 +23,7 @@ fn main() -> ExitCode {
     };
 
     if arguments.is_empty() || arguments.first().map(String::as_str) == Some("ui") {
-        return match quay_app::ui::run() {
+        return match quay_app::ui::run(started) {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("la fenêtre n'a pas démarré : {error}");

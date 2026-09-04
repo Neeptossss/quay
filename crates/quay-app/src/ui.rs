@@ -1,16 +1,39 @@
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
-use quay_forge::Capabilities;
+use quay_forge::{Capabilities, PollingCheckpoint, PollingSource, SearchSource};
 use quay_store::Store;
-use tauri::{Manager, State};
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::ipc::{self, CommandEntry, InboxEntry, KeyBinding, PullRequestEntry, ViewEntry};
 use crate::paths;
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncState {
+    pub phase: String,
+    pub detail: String,
+    pub healthy: bool,
+}
+
 pub struct Desktop {
+    started: Instant,
+    first_paint: Mutex<Option<f64>>,
     store: Mutex<Store>,
     capabilities: Mutex<Capabilities>,
     viewer: Mutex<String>,
+    sync: Mutex<SyncState>,
+}
+
+impl SyncState {
+    fn starting() -> Self {
+        Self {
+            phase: "starting".to_owned(),
+            detail: "démarrage".to_owned(),
+            healthy: true,
+        }
+    }
 }
 
 impl Desktop {
@@ -34,6 +57,34 @@ impl Desktop {
             Err(poisoned) => poisoned.into_inner().clone(),
         }
     }
+
+    fn adopt(&self, capabilities: Capabilities, viewer: String) {
+        match self.capabilities.lock() {
+            Ok(mut held) => *held = capabilities,
+            Err(poisoned) => *poisoned.into_inner() = capabilities,
+        }
+        if viewer.is_empty() {
+            return;
+        }
+        match self.viewer.lock() {
+            Ok(mut held) => *held = viewer,
+            Err(poisoned) => *poisoned.into_inner() = viewer,
+        }
+    }
+}
+
+fn announce(application: &AppHandle, phase: &str, detail: String, healthy: bool) {
+    let state = SyncState {
+        phase: phase.to_owned(),
+        detail,
+        healthy,
+    };
+    let desktop = application.state::<Desktop>();
+    match desktop.sync.lock() {
+        Ok(mut held) => *held = state.clone(),
+        Err(poisoned) => *poisoned.into_inner() = state.clone(),
+    }
+    let _ = application.emit("sync_state", state);
 }
 
 #[tauri::command]
@@ -74,6 +125,39 @@ fn pull_request(
 }
 
 #[tauri::command]
+fn bundle_loaded(desktop: State<'_, Desktop>) {
+    tracing::info!(
+        elapsed_ms = desktop.started.elapsed().as_secs_f64() * 1_000.0,
+        "frontend bundle running"
+    );
+}
+
+#[tauri::command]
+fn first_paint(desktop: State<'_, Desktop>) -> f64 {
+    let elapsed = desktop.started.elapsed().as_secs_f64() * 1_000.0;
+    tracing::info!(elapsed_ms = elapsed, "first paint");
+    match desktop.first_paint.lock() {
+        Ok(mut held) => *held.get_or_insert(elapsed),
+        Err(poisoned) => *poisoned.into_inner().get_or_insert(elapsed),
+    }
+}
+
+#[tauri::command]
+fn sync_state(desktop: State<'_, Desktop>) -> SyncState {
+    match desktop.sync.lock() {
+        Ok(state) => state.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
+}
+
+#[tauri::command]
+fn sync_now(application: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        run_one_cycle(&application).await;
+    });
+}
+
+#[tauri::command]
 fn completions(partial: String) -> Vec<String> {
     quay_core::completions(&partial)
         .into_iter()
@@ -81,12 +165,135 @@ fn completions(partial: String) -> Vec<String> {
         .collect()
 }
 
-pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+pub fn serves_embedded_frontend() -> bool {
+    !cfg!(dev)
+}
+
+async fn run_one_cycle(application: &AppHandle) {
+    let desktop = application.state::<Desktop>();
+    let path = desktop.with_store(|store| store.path().to_path_buf());
+    let viewer = desktop.viewer();
+
+    let token = match crate::session::token_for_login(if viewer.is_empty() {
+        None
+    } else {
+        Some(viewer.as_str())
+    }) {
+        Ok(token) => token,
+        Err(error) => {
+            announce(application, "idle", error.to_string(), false);
+            return;
+        }
+    };
+    let kind = token.kind();
+    let governor = match crate::session::governor_for(token) {
+        Ok(governor) => governor,
+        Err(error) => {
+            announce(application, "idle", error.to_string(), false);
+            return;
+        }
+    };
+
+    announce(
+        application,
+        "identifying",
+        "identification".to_owned(),
+        true,
+    );
+    let identity = match crate::session::identify(&governor, kind).await {
+        Ok(identity) => identity,
+        Err(error) => {
+            announce(application, "offline", error.to_string(), false);
+            return;
+        }
+    };
+    let login = identity.login.clone();
+    desktop.adopt(Capabilities::from_identity(&identity), login.clone());
+    let _ = application.emit("capabilities_changed", ());
+
+    let mut engine = {
+        let store = match Store::open(&path) {
+            Ok(store) => store,
+            Err(error) => {
+                announce(application, "offline", error.to_string(), false);
+                return;
+            }
+        };
+        let account_id = match store.remember_account(
+            "api.github.com",
+            &login,
+            "pat_classic",
+            &format!("quay/{login}"),
+        ) {
+            Ok(identifier) => identifier,
+            Err(error) => {
+                announce(application, "offline", error.to_string(), false);
+                return;
+            }
+        };
+        let checkpoint =
+            PollingCheckpoint::holding(quay_sync::notification_validators(&store).ok().flatten());
+        quay_sync::SyncEngine::new(store, governor.clone(), crate::session::API, account_id)
+            .listening_to(Box::new(PollingSource::sharing(
+                governor.clone(),
+                crate::session::API,
+                checkpoint,
+            )))
+            .listening_to(Box::new(SearchSource::review_queue(
+                governor.clone(),
+                crate::session::API,
+            )))
+    };
+
+    announce(application, "syncing", "rafraîchissement".to_owned(), true);
+    let stored = match engine.tick().await {
+        Ok(report) => report.stored,
+        Err(error) => {
+            announce(application, "offline", error.to_string(), false);
+            return;
+        }
+    };
+    let preloaded = engine
+        .preload(&login)
+        .await
+        .map(|report| report.fetched)
+        .unwrap_or(0);
+
+    if stored + preloaded > 0 {
+        let _ = application.emit("inbox_changed", ());
+    }
+    announce(
+        application,
+        "idle",
+        format!(
+            "{} req · {} pts · {} gratuite(s)",
+            governor.issued_requests(),
+            governor.spent_points(),
+            governor.free_revalidations()
+        ),
+        true,
+    );
+}
+
+fn spawn_sync_loop(application: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            run_one_cycle(&application).await;
+        }
+    });
+}
+
+pub fn run(started: Instant) -> Result<(), Box<dyn std::error::Error>> {
     let path = paths::database();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let store = Store::open(&path)?;
+    tracing::info!(
+        elapsed_ms = started.elapsed().as_secs_f64() * 1_000.0,
+        "store opened"
+    );
     let viewer = crate::session::stored_login(&store)?.unwrap_or_default();
     let capabilities = Capabilities::from_scopes(
         quay_forge::TokenKind::Unrecognised,
@@ -99,10 +306,22 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 store: Mutex::new(store),
                 capabilities: Mutex::new(capabilities),
                 viewer: Mutex::new(viewer),
+                sync: Mutex::new(SyncState::starting()),
+                started,
+                first_paint: Mutex::new(None),
             });
+            spawn_sync_loop(application.handle().clone());
+            tracing::info!(
+                elapsed_ms = started.elapsed().as_secs_f64() * 1_000.0,
+                "setup finished"
+            );
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            sync_now,
+            sync_state,
+            first_paint,
+            bundle_loaded,
             key_map,
             palette,
             saved_views,

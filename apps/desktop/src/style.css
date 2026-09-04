@@ -103,6 +103,10 @@ body {
   outline: none;
 }
 
+.spacer {
+  flex: none;
+}
+
 .row {
   display: grid;
   grid-template-columns: 15rem 4.5rem 2rem 3rem 2.5rem 1fr 8rem 3.5rem;
@@ -115,8 +119,15 @@ body {
 }
 
 .row[aria-selected="true"] {
-  box-shadow: inset 2px 0 0 var(--accent);
   background: var(--surface-raised);
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    inset 0 0 0 1px var(--accent);
+}
+
+.row[aria-selected="true"] .title {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 .row .repo,

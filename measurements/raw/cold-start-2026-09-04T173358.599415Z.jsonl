@@ -1,0 +1,18 @@
+{"elapsed_ms":1.47975,"launch":0,"machine":"aarch64-macos","phase":"store opened","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":2215.962708,"launch":0,"machine":"aarch64-macos","phase":"setup finished","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":2353.281625,"launch":0,"machine":"aarch64-macos","phase":"frontend bundle running","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":4406.908291,"launch":0,"machine":"aarch64-macos","phase":"first paint","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":2.194917,"launch":1,"machine":"aarch64-macos","phase":"store opened","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":2216.626167,"launch":1,"machine":"aarch64-macos","phase":"setup finished","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":2327.815375,"launch":1,"machine":"aarch64-macos","phase":"frontend bundle running","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":4387.487375,"launch":1,"machine":"aarch64-macos","phase":"first paint","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":1.325583,"launch":2,"machine":"aarch64-macos","phase":"store opened","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":2195.878833,"launch":2,"machine":"aarch64-macos","phase":"setup finished","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":2310.6095,"launch":2,"machine":"aarch64-macos","phase":"frontend bundle running","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":4362.687916999999,"launch":2,"machine":"aarch64-macos","phase":"first paint","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":1.566834,"launch":3,"machine":"aarch64-macos","phase":"store opened","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":2191.585917,"launch":3,"machine":"aarch64-macos","phase":"setup finished","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":2303.425042,"launch":3,"machine":"aarch64-macos","phase":"frontend bundle running","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":1.7107080000000001,"launch":4,"machine":"aarch64-macos","phase":"store opened","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":2196.976166,"launch":4,"machine":"aarch64-macos","phase":"setup finished","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
+{"elapsed_ms":2308.6220000000003,"launch":4,"machine":"aarch64-macos","phase":"frontend bundle running","run_started_at":"2026-09-04T17:33:58.599415Z","scenario":"cold-start"}
