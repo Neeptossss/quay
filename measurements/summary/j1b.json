@@ -1,0 +1,548 @@
+{
+  "budget": "inbox_query",
+  "machine": "aarch64-macos",
+  "measured_at": "2026-09-04T13:59:51.52716Z",
+  "rows": [
+    {
+      "cache": "warm",
+      "dataset": "20repos-300open-0closed-5000comments",
+      "percentiles": {
+        "max": 0.153875,
+        "mean": 0.03363161710000003,
+        "min": 0.027875,
+        "p50": 0.031458,
+        "p95": 0.045125,
+        "p99": 0.062,
+        "samples": 10000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_across_tracked_repos",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-300open-0closed-5000comments-open_across_tracked_repos-warm.csv",
+      "rows": 50,
+      "scale": 1
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-300open-0closed-5000comments",
+      "percentiles": {
+        "max": 0.147458,
+        "mean": 0.08975790000000002,
+        "min": 0.073959,
+        "p50": 0.084709,
+        "p95": 0.11670799999999999,
+        "p99": 0.12979100000000002,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_across_tracked_repos",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-300open-0closed-5000comments-open_across_tracked_repos-cold.csv",
+      "rows": 50,
+      "scale": 1
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-300open-0closed-5000comments",
+      "percentiles": {
+        "max": 0.620417,
+        "mean": 0.1606956477000001,
+        "min": 0.140583,
+        "p50": 0.153583,
+        "p95": 0.201792,
+        "p99": 0.249292,
+        "samples": 10000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?) ; CORRELATED SCALAR SUBQUERY 1 ; BLOOM FILTER ON t (pr_id=? AND is_resolved=?) ; SEARCH t USING AUTOMATIC PARTIAL COVERING INDEX (pr_id=? AND is_resolved=?)",
+      "query": "open_with_unresolved_thread_count",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-300open-0closed-5000comments-open_with_unresolved_thread_count-warm.csv",
+      "rows": 50,
+      "scale": 1
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-300open-0closed-5000comments",
+      "percentiles": {
+        "max": 1.2095,
+        "mean": 0.30074003999999993,
+        "min": 0.232833,
+        "p50": 0.277167,
+        "p95": 0.405375,
+        "p99": 0.7201249999999999,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?) ; CORRELATED SCALAR SUBQUERY 1 ; BLOOM FILTER ON t (pr_id=? AND is_resolved=?) ; SEARCH t USING AUTOMATIC PARTIAL COVERING INDEX (pr_id=? AND is_resolved=?)",
+      "query": "open_with_unresolved_thread_count",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-300open-0closed-5000comments-open_with_unresolved_thread_count-cold.csv",
+      "rows": 50,
+      "scale": 1
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-300open-0closed-5000comments",
+      "percentiles": {
+        "max": 0.618666,
+        "mean": 0.050253378799999714,
+        "min": 0.044083,
+        "p50": 0.047125,
+        "p95": 0.06179199999999999,
+        "p99": 0.11975,
+        "samples": 10000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "review_requested_approximation",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-300open-0closed-5000comments-review_requested_approximation-warm.csv",
+      "rows": 50,
+      "scale": 1
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-300open-0closed-5000comments",
+      "percentiles": {
+        "max": 3.471125,
+        "mean": 0.3372187199999999,
+        "min": 0.121209,
+        "p50": 0.18437499999999998,
+        "p95": 1.189667,
+        "p99": 1.664792,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "review_requested_approximation",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-300open-0closed-5000comments-review_requested_approximation-cold.csv",
+      "rows": 50,
+      "scale": 1
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-300open-0closed-5000comments",
+      "percentiles": {
+        "max": 0.147708,
+        "mean": 0.036028800899999706,
+        "min": 0.031167,
+        "p50": 0.034416999999999996,
+        "p95": 0.042833,
+        "p99": 0.06275,
+        "samples": 10000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_filtered_by_common_title",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-300open-0closed-5000comments-open_filtered_by_common_title-warm.csv",
+      "rows": 50,
+      "scale": 1
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-300open-0closed-5000comments",
+      "percentiles": {
+        "max": 0.514792,
+        "mean": 0.10265623999999997,
+        "min": 0.07725,
+        "p50": 0.095083,
+        "p95": 0.13325,
+        "p99": 0.197459,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_filtered_by_common_title",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-300open-0closed-5000comments-open_filtered_by_common_title-cold.csv",
+      "rows": 50,
+      "scale": 1
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-300open-0closed-5000comments",
+      "percentiles": {
+        "max": 0.308,
+        "mean": 0.05220879140000028,
+        "min": 0.043375,
+        "p50": 0.048458,
+        "p95": 0.066708,
+        "p99": 0.102291,
+        "samples": 10000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_filtered_by_rare_title",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-300open-0closed-5000comments-open_filtered_by_rare_title-warm.csv",
+      "rows": 0,
+      "scale": 1
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-300open-0closed-5000comments",
+      "percentiles": {
+        "max": 0.508791,
+        "mean": 0.26047623000000014,
+        "min": 0.204833,
+        "p50": 0.24250000000000002,
+        "p95": 0.35716600000000004,
+        "p99": 0.400084,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_filtered_by_rare_title",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-300open-0closed-5000comments-open_filtered_by_rare_title-cold.csv",
+      "rows": 0,
+      "scale": 1
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-3000open-0closed-50000comments",
+      "percentiles": {
+        "max": 0.096916,
+        "mean": 0.03332638249999988,
+        "min": 0.030167,
+        "p50": 0.031417,
+        "p95": 0.041124999999999995,
+        "p99": 0.055708999999999995,
+        "samples": 2000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_across_tracked_repos",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-3000open-0closed-50000comments-open_across_tracked_repos-warm.csv",
+      "rows": 50,
+      "scale": 10
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-3000open-0closed-50000comments",
+      "percentiles": {
+        "max": 0.149125,
+        "mean": 0.08848495999999999,
+        "min": 0.074167,
+        "p50": 0.083167,
+        "p95": 0.11641699999999999,
+        "p99": 0.14075000000000001,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_across_tracked_repos",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-3000open-0closed-50000comments-open_across_tracked_repos-cold.csv",
+      "rows": 50,
+      "scale": 10
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-3000open-0closed-50000comments",
+      "percentiles": {
+        "max": 20.584125,
+        "mean": 11.984908622000004,
+        "min": 10.987375,
+        "p50": 11.92675,
+        "p95": 12.89475,
+        "p99": 13.340084000000001,
+        "samples": 2000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?) ; CORRELATED SCALAR SUBQUERY 1 ; SCAN t",
+      "query": "open_with_unresolved_thread_count",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-3000open-0closed-50000comments-open_with_unresolved_thread_count-warm.csv",
+      "rows": 50,
+      "scale": 10
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-3000open-0closed-50000comments",
+      "percentiles": {
+        "max": 14.491,
+        "mean": 12.089451669999995,
+        "min": 11.50875,
+        "p50": 12.027208,
+        "p95": 12.694749999999999,
+        "p99": 13.200292000000001,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?) ; CORRELATED SCALAR SUBQUERY 1 ; SCAN t",
+      "query": "open_with_unresolved_thread_count",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-3000open-0closed-50000comments-open_with_unresolved_thread_count-cold.csv",
+      "rows": 50,
+      "scale": 10
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-3000open-0closed-50000comments",
+      "percentiles": {
+        "max": 0.24612499999999998,
+        "mean": 0.051042941000000085,
+        "min": 0.043625000000000004,
+        "p50": 0.04725,
+        "p95": 0.06658299999999999,
+        "p99": 0.10575,
+        "samples": 2000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "review_requested_approximation",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-3000open-0closed-50000comments-review_requested_approximation-warm.csv",
+      "rows": 50,
+      "scale": 10
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-3000open-0closed-50000comments",
+      "percentiles": {
+        "max": 0.220166,
+        "mean": 0.14731202999999998,
+        "min": 0.12270900000000001,
+        "p50": 0.141958,
+        "p95": 0.187333,
+        "p99": 0.213,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "review_requested_approximation",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-3000open-0closed-50000comments-review_requested_approximation-cold.csv",
+      "rows": 50,
+      "scale": 10
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-3000open-0closed-50000comments",
+      "percentiles": {
+        "max": 0.22,
+        "mean": 0.038067316999999934,
+        "min": 0.030583000000000003,
+        "p50": 0.035333,
+        "p95": 0.049625,
+        "p99": 0.067667,
+        "samples": 2000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_filtered_by_common_title",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-3000open-0closed-50000comments-open_filtered_by_common_title-warm.csv",
+      "rows": 50,
+      "scale": 10
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-3000open-0closed-50000comments",
+      "percentiles": {
+        "max": 0.18087499999999998,
+        "mean": 0.09702461,
+        "min": 0.078083,
+        "p50": 0.09225000000000001,
+        "p95": 0.137625,
+        "p99": 0.14533300000000002,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_filtered_by_common_title",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-3000open-0closed-50000comments-open_filtered_by_common_title-cold.csv",
+      "rows": 50,
+      "scale": 10
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-3000open-0closed-50000comments",
+      "percentiles": {
+        "max": 13.525333,
+        "mean": 2.279338391499998,
+        "min": 1.621625,
+        "p50": 2.125209,
+        "p95": 2.954917,
+        "p99": 7.143625,
+        "samples": 2000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_filtered_by_rare_title",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-3000open-0closed-50000comments-open_filtered_by_rare_title-warm.csv",
+      "rows": 0,
+      "scale": 10
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-3000open-0closed-50000comments",
+      "percentiles": {
+        "max": 3.650875,
+        "mean": 2.227599210000001,
+        "min": 1.849542,
+        "p50": 2.180417,
+        "p95": 2.6600420000000002,
+        "p99": 2.89,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_filtered_by_rare_title",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-3000open-0closed-50000comments-open_filtered_by_rare_title-cold.csv",
+      "rows": 0,
+      "scale": 10
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-30000open-0closed-500000comments",
+      "percentiles": {
+        "max": 0.22737500000000002,
+        "mean": 0.032922366500000216,
+        "min": 0.029875000000000002,
+        "p50": 0.030916,
+        "p95": 0.03925,
+        "p99": 0.065667,
+        "samples": 2000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_across_tracked_repos",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-30000open-0closed-500000comments-open_across_tracked_repos-warm.csv",
+      "rows": 50,
+      "scale": 100
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-30000open-0closed-500000comments",
+      "percentiles": {
+        "max": 0.1425,
+        "mean": 0.09556871000000004,
+        "min": 0.075375,
+        "p50": 0.093042,
+        "p95": 0.12925,
+        "p99": 0.135584,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_across_tracked_repos",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-30000open-0closed-500000comments-open_across_tracked_repos-cold.csv",
+      "rows": 50,
+      "scale": 100
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-30000open-0closed-500000comments",
+      "percentiles": {
+        "max": 638.6805840000001,
+        "mean": 198.98908893850015,
+        "min": 184.775417,
+        "p50": 192.62929200000002,
+        "p95": 226.503458,
+        "p99": 295.61749999999995,
+        "samples": 2000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?) ; CORRELATED SCALAR SUBQUERY 1 ; SCAN t",
+      "query": "open_with_unresolved_thread_count",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-30000open-0closed-500000comments-open_with_unresolved_thread_count-warm.csv",
+      "rows": 50,
+      "scale": 100
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-30000open-0closed-500000comments",
+      "percentiles": {
+        "max": 217.6985,
+        "mean": 191.87573580000003,
+        "min": 185.834667,
+        "p50": 190.50033299999998,
+        "p95": 200.178042,
+        "p99": 208.36154200000001,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?) ; CORRELATED SCALAR SUBQUERY 1 ; SCAN t",
+      "query": "open_with_unresolved_thread_count",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-30000open-0closed-500000comments-open_with_unresolved_thread_count-cold.csv",
+      "rows": 50,
+      "scale": 100
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-30000open-0closed-500000comments",
+      "percentiles": {
+        "max": 0.176375,
+        "mean": 0.04725883400000022,
+        "min": 0.039583,
+        "p50": 0.045417,
+        "p95": 0.057333,
+        "p99": 0.071416,
+        "samples": 2000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "review_requested_approximation",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-30000open-0closed-500000comments-review_requested_approximation-warm.csv",
+      "rows": 50,
+      "scale": 100
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-30000open-0closed-500000comments",
+      "percentiles": {
+        "max": 0.229459,
+        "mean": 0.13922869999999998,
+        "min": 0.1175,
+        "p50": 0.13241699999999998,
+        "p95": 0.17108299999999999,
+        "p99": 0.222041,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "review_requested_approximation",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-30000open-0closed-500000comments-review_requested_approximation-cold.csv",
+      "rows": 50,
+      "scale": 100
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-30000open-0closed-500000comments",
+      "percentiles": {
+        "max": 0.206042,
+        "mean": 0.03578595449999991,
+        "min": 0.029666,
+        "p50": 0.034416999999999996,
+        "p95": 0.043917,
+        "p99": 0.060292,
+        "samples": 2000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_filtered_by_common_title",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-30000open-0closed-500000comments-open_filtered_by_common_title-warm.csv",
+      "rows": 50,
+      "scale": 100
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-30000open-0closed-500000comments",
+      "percentiles": {
+        "max": 0.14024999999999999,
+        "mean": 0.0877534,
+        "min": 0.070083,
+        "p50": 0.084084,
+        "p95": 0.11524999999999999,
+        "p99": 0.136542,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_filtered_by_common_title",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-30000open-0closed-500000comments-open_filtered_by_common_title-cold.csv",
+      "rows": 50,
+      "scale": 100
+    },
+    {
+      "cache": "warm",
+      "dataset": "20repos-30000open-0closed-500000comments",
+      "percentiles": {
+        "max": 68.610083,
+        "mean": 20.31077043949999,
+        "min": 19.1665,
+        "p50": 19.883416,
+        "p95": 21.543542,
+        "p99": 28.237166000000002,
+        "samples": 2000
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_filtered_by_rare_title",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-30000open-0closed-500000comments-open_filtered_by_rare_title-warm.csv",
+      "rows": 0,
+      "scale": 100
+    },
+    {
+      "cache": "cold",
+      "dataset": "20repos-30000open-0closed-500000comments",
+      "percentiles": {
+        "max": 65.21225,
+        "mean": 20.48926666000001,
+        "min": 19.490417,
+        "p50": 19.8445,
+        "p95": 20.636625,
+        "p99": 25.897625,
+        "samples": 100
+      },
+      "plan": "SEARCH pr USING INDEX idx_pr_inbox (state=?) ; BLOOM FILTER ON r (id=?) ; SEARCH r USING INTEGER PRIMARY KEY (rowid=?)",
+      "query": "open_filtered_by_rare_title",
+      "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-30000open-0closed-500000comments-open_filtered_by_rare_title-cold.csv",
+      "rows": 0,
+      "scale": 100
+    }
+  ],
+  "scenario": "j1b"
+}

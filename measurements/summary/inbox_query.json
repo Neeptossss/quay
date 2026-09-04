@@ -1,0 +1,19 @@
+{
+  "budget_id": "inbox_query",
+  "scenario": "j1b 20repos-300open-0closed-5000comments open_with_unresolved_thread_count",
+  "statistic": "p99",
+  "value": 0.249292,
+  "unit": "ms",
+  "percentiles": {
+    "samples": 10000,
+    "min": 0.140583,
+    "mean": 0.1606956477000001,
+    "p50": 0.153583,
+    "p95": 0.201792,
+    "p99": 0.249292,
+    "max": 0.620417
+  },
+  "measured_at": "2026-09-04T13:59:51.52716Z",
+  "machine": "aarch64-macos",
+  "raw_log": "measurements/raw/j1b-2026-09-04T135951.52716Z-20repos-300open-0closed-5000comments-open_with_unresolved_thread_count-warm.csv"
+}

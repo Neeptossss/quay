@@ -1,0 +1,41 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/quay-core",
+    "crates/quay-store",
+    "crates/quay-forge",
+    "crates/quay-sync",
+    "crates/quay-git",
+    "crates/quay-app",
+    "xtask",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.98"
+publish = false
+
+[workspace.dependencies]
+quay-core = { path = "crates/quay-core" }
+quay-store = { path = "crates/quay-store" }
+quay-forge = { path = "crates/quay-forge" }
+quay-sync = { path = "crates/quay-sync" }
+quay-git = { path = "crates/quay-git" }
+
+async-trait = "0.1.92"
+criterion = "0.8.2"
+rand = "0.10.2"
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "json", "gzip", "http2", "charset"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.20"
+tempfile = "3.27.0"
+time = { version = "0.3.55", features = ["formatting", "parsing", "macros"] }
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+wiremock = "0.6.5"
+
+[profile.bench]
+debug = true

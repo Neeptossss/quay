@@ -1,0 +1,10 @@
+[package]
+name = "quay-app"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+quay-core.workspace = true
+quay-sync.workspace = true

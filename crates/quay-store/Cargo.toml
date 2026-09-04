@@ -1,0 +1,21 @@
+[package]
+name = "quay-store"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+rusqlite.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+tempfile.workspace = true
+
+[lib]
+bench = false
+
+[[bench]]
+name = "inbox"
+harness = false
